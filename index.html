@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="theme-color" content="#fce4ec">
+    <title>Tap & Pop</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Fredoka+One&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+    <div id="game-container">
+        <canvas id="game-canvas"></canvas>
+
+        <!-- Loading Screen -->
+        <div id="screen-loading" class="screen">
+            <div class="loading-content">
+                <div class="loading-title">Tap & Pop</div>
+                <div class="loading-bar-container">
+                    <div id="loading-bar" class="loading-bar"></div>
+                </div>
+                <div id="loading-text" class="loading-text">Loading...</div>
+            </div>
+        </div>
+
+        <!-- Splash Screen -->
+        <div id="screen-splash" class="screen">
+            <div class="splash-content">
+                <img id="splash-logo" class="splash-logo" src="assets/images/logo.png" alt="Tap & Pop"
+                     onerror="this.style.display='none'; document.getElementById('splash-logo-text').style.display='block';">
+                <div id="splash-logo-text" class="splash-logo-text" style="display:none;">Tap & Pop</div>
+                <div class="tap-to-start pulse-anim">Tap to Start</div>
+            </div>
+        </div>
+
+        <!-- Menu Screen -->
+        <div id="screen-menu" class="screen">
+            <div class="menu-content">
+                <div class="menu-title">Tap & Pop</div>
+                <div id="high-score-menu" class="high-score">Best: 0</div>
+                <button id="btn-play" class="btn btn-play">▶ PLAY</button>
+                <button id="btn-sound" class="btn btn-sound">🔊</button>
+                <div class="menu-instructions">
+                    <p>🍎 Tap fruits to pop them!</p>
+                    <p>⭐ Stars = bonus points</p>
+                    <p>💣 Don't tap bombs!</p>
+                    <p>❤️ Hearts = extra life</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- HUD (in-game) -->
+        <div id="hud" class="screen hud">
+            <div class="hud-top">
+                <div class="hud-left">
+                    <div id="hud-lives" class="hud-lives"></div>
+                </div>
+                <div class="hud-center">
+                    <div id="hud-score" class="hud-score">0</div>
+                    <div id="hud-combo" class="hud-combo"></div>
+                </div>
+                <div class="hud-right">
+                    <div id="hud-level" class="hud-level">LV 1</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Game Over Screen -->
+        <div id="screen-gameover" class="screen">
+            <div class="gameover-content">
+                <div class="gameover-title">Game Over</div>
+                <div id="final-score" class="final-score">0</div>
+                <div id="new-best-badge" class="new-best-badge">🎉 NEW BEST! 🎉</div>
+                <div id="final-highscore" class="final-highscore">Best: 0</div>
+                <button id="btn-replay" class="btn btn-replay">↻ PLAY AGAIN</button>
+            </div>
+        </div>
+    </div>
+
+    <script type="module" src="js/main.js"></script>
+</body>
+</html>
