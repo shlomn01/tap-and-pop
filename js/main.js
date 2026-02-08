@@ -20,7 +20,7 @@ async function loadImages(onProgress) {
     return images;
 }
 
-// --- Load Audio via Web Audio API ---
+// --- Register Audio URLs ---
 async function loadAudio(audioManager, onProgress) {
     const entries = Object.entries(ASSET_MANIFEST.audio);
     let loaded = 0;

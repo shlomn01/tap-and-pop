@@ -47,8 +47,8 @@ export const ASSET_MANIFEST = {
         gameOver:  'assets/audio/game_over.wav',
         buzz:      'assets/audio/buzz.wav',
         tick:      'assets/audio/tick.wav',
-        menuMusic: 'assets/audio/menu_music.wav',
-        gameMusic: 'assets/audio/game_music.wav',
+        menuMusic: 'assets/audio/menu_music.mp3',
+        gameMusic: 'assets/audio/game_music.mp3',
     }
 };
 

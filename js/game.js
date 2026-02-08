@@ -154,201 +154,154 @@ class FloatingText {
     get alive() { return this.elapsed < this.life; }
 }
 
-// --- Web Audio Manager (bulletproof, Howler.js-inspired) ---
+// --- Simple Audio Manager using HTML5 Audio ---
+// Uses plain Audio elements - the most reliable cross-browser approach.
+// Music: single Audio element with loop.
+// SFX: pool of Audio elements for overlapping sounds.
 export class AudioManager {
     constructor() {
-        this._ctx = null;
-        this._masterGain = null;
-        this._sfxGain = null;
-        this._musicGain = null;
-        this._buffers = {};
-        this._rawData = {};
-        this._musicSource = null;
-        this._currentMusic = null;
-        this._unlocked = false;
+        this._urls = {};        // name -> url mapping
+        this._sfxPool = {};     // name -> [Audio, Audio, ...]
+        this._music = null;     // current music Audio element
+        this._currentMusic = null; // name of current music
         this._muted = false;
-        this._queue = [];
+        this._musicVolume = 0.5;
+        this._pendingMusic = null; // music to play after user gesture
+        this._userInteracted = false;
         this._setupGestureUnlock();
-    }
-
-    _getCtx() {
-        if (!this._ctx) {
-            const AC = window.AudioContext || window.webkitAudioContext;
-            if (!AC) return null;
-            this._ctx = new AC();
-            this._masterGain = this._ctx.createGain();
-            this._masterGain.connect(this._ctx.destination);
-            this._sfxGain = this._ctx.createGain();
-            this._sfxGain.gain.value = 0.8;
-            this._sfxGain.connect(this._masterGain);
-            this._musicGain = this._ctx.createGain();
-            this._musicGain.gain.value = 0.5;
-            this._musicGain.connect(this._masterGain);
-            this._ctx.onstatechange = () => {
-                if (this._ctx.state === 'running') this._processQueue();
-            };
-        }
-        return this._ctx;
+        console.log('[Audio] AudioManager created');
     }
 
     _setupGestureUnlock() {
-        const events = ['click', 'touchstart', 'touchend', 'pointerdown', 'keydown'];
         const handler = () => {
-            this._unlock();
-            if (this._unlocked) {
-                events.forEach(e => document.removeEventListener(e, handler, true));
+            this._userInteracted = true;
+            console.log('[Audio] User interacted');
+            // If there's pending music, play it now
+            if (this._pendingMusic && !this._muted) {
+                this._doPlayMusic(this._pendingMusic.name, this._pendingMusic.volume);
+                this._pendingMusic = null;
             }
         };
-        events.forEach(e => document.addEventListener(e, handler, { capture: true, passive: true }));
-        document.addEventListener('visibilitychange', () => {
-            if (document.visibilityState === 'visible' && this._ctx) {
-                this._ctx.resume().catch(() => {});
-            }
+        ['click', 'touchstart', 'touchend', 'pointerdown', 'keydown'].forEach(e => {
+            document.addEventListener(e, handler, { capture: true, passive: true });
         });
     }
 
-    _unlock() {
-        const ctx = this._getCtx();
-        if (!ctx || this._unlocked) return;
-        if (ctx.state !== 'running') ctx.resume().catch(() => {});
-        // Silent buffer trick for iOS Safari
-        try {
-            const buf = ctx.createBuffer(1, 1, 22050);
-            const src = ctx.createBufferSource();
-            src.buffer = buf;
-            src.connect(ctx.destination);
-            src.start(0);
-        } catch (e) {}
-        // Check if running now, or wait for onstatechange
-        if (ctx.state === 'running') {
-            this._unlocked = true;
-            this._decodeRaw();
-            this._processQueue();
-        } else {
-            // Will be handled by onstatechange
-            const check = () => {
-                if (ctx.state === 'running') {
-                    this._unlocked = true;
-                    this._decodeRaw();
-                    this._processQueue();
-                } else {
-                    setTimeout(check, 50);
-                }
-            };
-            setTimeout(check, 50);
-        }
-    }
-
+    // "Load" just means storing the URL - Audio elements load on demand
     async loadBuffer(name, url) {
-        try {
-            const resp = await fetch(url);
-            if (!resp.ok) return;
-            const raw = await resp.arrayBuffer();
-            this._rawData[name] = raw;
-            const ctx = this._getCtx();
-            if (ctx) {
-                try {
-                    this._buffers[name] = await ctx.decodeAudioData(raw.slice(0));
-                } catch (e) { /* will retry after unlock */ }
-            }
-        } catch (e) {}
-    }
-
-    async _decodeRaw() {
-        const ctx = this._getCtx();
-        if (!ctx) return;
-        for (const name of Object.keys(this._rawData)) {
-            if (!this._buffers[name] && this._rawData[name]) {
-                try {
-                    this._buffers[name] = await ctx.decodeAudioData(this._rawData[name].slice(0));
-                } catch (e) {}
+        this._urls[name] = url;
+        // Pre-create SFX pool (3 copies for overlapping)
+        if (!url.includes('music')) {
+            this._sfxPool[name] = [];
+            for (let i = 0; i < 3; i++) {
+                const a = new Audio(url);
+                a.preload = 'auto';
+                a.volume = 0.8;
+                this._sfxPool[name].push(a);
             }
         }
-        this._processQueue();
-    }
-
-    _processQueue() {
-        const pending = [...this._queue];
-        this._queue = [];
-        for (const item of pending) {
-            if (item.type === 'music') this._doPlayMusic(item.name, item.volume);
-            else this._doPlaySFX(item.name, item.volume);
-        }
+        console.log(`[Audio] Registered: ${name} -> ${url}`);
     }
 
     playSFX(name, volume = 1) {
         if (this._muted) return;
-        const ctx = this._getCtx();
-        if (!ctx || !this._buffers[name] || ctx.state !== 'running') {
-            if (this._rawData[name]) this._queue.push({ type: 'sfx', name, volume });
+        const pool = this._sfxPool[name];
+        if (!pool || pool.length === 0) {
+            console.warn(`[Audio] No SFX pool for: ${name}`);
             return;
         }
-        this._doPlaySFX(name, volume);
-    }
-
-    _doPlaySFX(name, volume) {
-        const ctx = this._getCtx();
-        if (!ctx || !this._buffers[name]) return;
-        try {
-            const src = ctx.createBufferSource();
-            src.buffer = this._buffers[name];
-            if (volume !== 1) {
-                const g = ctx.createGain();
-                g.gain.value = volume;
-                src.connect(g);
-                g.connect(this._sfxGain);
-            } else {
-                src.connect(this._sfxGain);
-            }
-            src.start(0);
-        } catch (e) {}
+        // Find a free audio element (one that's ended or paused)
+        let audio = pool.find(a => a.paused || a.ended);
+        if (!audio) {
+            // All busy - clone a new one
+            audio = pool[0].cloneNode();
+            pool.push(audio);
+        }
+        audio.volume = Math.min(1, volume * 0.8);
+        audio.currentTime = 0;
+        const p = audio.play();
+        if (p) p.catch(() => {}); // Ignore autoplay errors for SFX
     }
 
     playMusic(name, volume = 0.5) {
         if (this._muted) return;
-        const ctx = this._getCtx();
-        // Remove any pending music from queue
-        this._queue = this._queue.filter(q => q.type !== 'music');
-        if (!ctx || !this._buffers[name] || ctx.state !== 'running') {
-            this._queue.push({ type: 'music', name, volume });
-            if (ctx && ctx.state !== 'running') ctx.resume().catch(() => {});
+        this._musicVolume = volume;
+
+        // If same music already playing, skip
+        if (this._currentMusic === name && this._music && !this._music.paused) {
+            console.log(`[Audio] Music already playing: ${name}`);
             return;
         }
+
+        // If user hasn't interacted yet, queue it
+        if (!this._userInteracted) {
+            console.log(`[Audio] Queuing music until user interaction: ${name}`);
+            this._pendingMusic = { name, volume };
+            return;
+        }
+
         this._doPlayMusic(name, volume);
     }
 
     _doPlayMusic(name, volume) {
-        const ctx = this._getCtx();
-        if (!ctx || !this._buffers[name]) return;
-        if (this._currentMusic === name && this._musicSource) return;
-        this.stopMusic();
-        try {
-            this._musicGain.gain.value = volume;
-            const src = ctx.createBufferSource();
-            src.buffer = this._buffers[name];
-            src.loop = true;
-            src.connect(this._musicGain);
-            src.start(0);
-            this._musicSource = src;
-            this._currentMusic = name;
-        } catch (e) {}
-    }
+        const url = this._urls[name];
+        if (!url) {
+            console.warn(`[Audio] No URL for music: ${name}`);
+            return;
+        }
 
-    stopMusic() {
-        this._queue = this._queue.filter(q => q.type !== 'music');
-        if (this._musicSource) {
-            try { this._musicSource.stop(); } catch (e) {}
-            this._musicSource = null;
-            this._currentMusic = null;
+        console.log(`[Audio] Playing music: ${name} from ${url}`);
+
+        // Stop current music
+        this.stopMusic();
+
+        // Create new audio element
+        this._music = new Audio(url);
+        this._music.loop = true;
+        this._music.volume = Math.min(1, volume);
+        this._currentMusic = name;
+
+        const p = this._music.play();
+        if (p) {
+            p.then(() => console.log(`[Audio] Music started: ${name}`))
+             .catch(err => {
+                console.warn(`[Audio] Music play failed: ${err.message}`);
+                // Queue for next interaction
+                this._pendingMusic = { name, volume };
+            });
         }
     }
 
-    resume() { this._unlock(); }
+    stopMusic() {
+        this._pendingMusic = null;
+        if (this._music) {
+            this._music.pause();
+            this._music.currentTime = 0;
+            this._music.src = '';
+            this._music = null;
+            this._currentMusic = null;
+            console.log('[Audio] Music stopped');
+        }
+    }
+
+    resume() {
+        // If music was pending, try to play it now
+        if (this._pendingMusic && !this._muted) {
+            this._userInteracted = true;
+            this._doPlayMusic(this._pendingMusic.name, this._pendingMusic.volume);
+            this._pendingMusic = null;
+        }
+    }
 
     setMuted(muted) {
         this._muted = muted;
-        if (this._masterGain) this._masterGain.gain.value = muted ? 0 : 1;
-        if (muted) this.stopMusic();
+        if (muted) {
+            this.stopMusic();
+        }
+        // Mute/unmute all SFX pools
+        for (const pool of Object.values(this._sfxPool)) {
+            for (const a of pool) a.muted = muted;
+        }
     }
 }
 
