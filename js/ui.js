@@ -43,6 +43,15 @@ export class UI {
     }
 
     _bindButtons() {
+        // Splash screen - tap anywhere to go to menu
+        this.screens.splash?.addEventListener('click', () => {
+            this.game?._startMenu();
+        });
+        this.screens.splash?.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            this.game?._startMenu();
+        }, { passive: false });
+
         this.elements.btnPlay?.addEventListener('click', (e) => {
             e.stopPropagation();
             this.game?.startGame();
