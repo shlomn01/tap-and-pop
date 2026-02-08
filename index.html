@@ -5,78 +5,116 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-    <meta name="mobile-web-app-capable" content="yes">
-    <meta name="theme-color" content="#fce4ec">
-    <title>Tap & Pop</title>
+    <meta name="theme-color" content="#0f172a">
+    <title>Spot the Shape</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link href="https://fonts.googleapis.com/css2?family=Fredoka+One&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Fredoka+One&family=Inter:wght@400;600;700;900&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="css/style.css">
 </head>
 <body>
     <div id="game-container">
         <canvas id="game-canvas"></canvas>
 
-        <!-- Loading Screen -->
+        <!-- Loading -->
         <div id="screen-loading" class="screen">
-            <div class="loading-content">
-                <div class="loading-title">Tap & Pop</div>
-                <div class="loading-bar-container">
-                    <div id="loading-bar" class="loading-bar"></div>
-                </div>
-                <div id="loading-text" class="loading-text">Loading...</div>
+            <div class="loading-wrap">
+                <div class="loading-logo">SPOT THE SHAPE</div>
+                <div class="loading-bar-bg"><div id="load-bar" class="loading-bar-fill"></div></div>
+                <div id="load-text" class="loading-text">Loading...</div>
             </div>
         </div>
 
-        <!-- Splash Screen -->
-        <div id="screen-splash" class="screen">
-            <div class="splash-content">
-                <img id="splash-logo" class="splash-logo" src="assets/images/logo.png" alt="Tap & Pop"
-                     onerror="this.style.display='none'; document.getElementById('splash-logo-text').style.display='block';">
-                <div id="splash-logo-text" class="splash-logo-text" style="display:none;">Tap & Pop</div>
-                <div class="tap-to-start pulse-anim">Tap to Start</div>
-            </div>
-        </div>
-
-        <!-- Menu Screen -->
+        <!-- Menu -->
         <div id="screen-menu" class="screen">
-            <div class="menu-content">
-                <div class="menu-title">Tap & Pop</div>
-                <div id="high-score-menu" class="high-score">Best: 0</div>
-                <button id="btn-play" class="btn btn-play">▶ PLAY</button>
-                <button id="btn-sound" class="btn btn-sound">🔊</button>
-                <div class="menu-instructions">
-                    <p>🍎 Tap fruits to pop them!</p>
-                    <p>⭐ Stars = bonus points</p>
-                    <p>💣 Don't tap bombs!</p>
-                    <p>❤️ Hearts = extra life</p>
+            <div class="menu-wrap">
+                <div class="menu-title-group">
+                    <div class="menu-icon">🔍</div>
+                    <h1 class="menu-title">SPOT THE<br>SHAPE</h1>
+                    <div class="menu-subtitle">Find the matching shape before time runs out!</div>
+                </div>
+
+                <div class="menu-buttons">
+                    <button id="btn-solo" class="btn btn-primary">
+                        <span class="btn-icon">👤</span>
+                        <span class="btn-text"><span class="btn-label">SOLO MODE</span><span class="btn-desc">Progressive difficulty</span></span>
+                    </button>
+                    <button id="btn-duo" class="btn btn-secondary">
+                        <span class="btn-icon">👥</span>
+                        <span class="btn-text"><span class="btn-label">VS MODE</span><span class="btn-desc">Race to spot first!</span></span>
+                    </button>
+                </div>
+
+                <div class="menu-footer">
+                    <div id="menu-highscore" class="menu-best">Best: 0</div>
+                    <button id="btn-sound" class="btn-sound">🔊</button>
                 </div>
             </div>
         </div>
 
-        <!-- HUD (in-game) -->
-        <div id="hud" class="screen hud">
-            <div class="hud-top">
+        <!-- HUD (Solo) -->
+        <div id="screen-hud" class="screen hud-screen">
+            <div class="hud-bar">
                 <div class="hud-left">
-                    <div id="hud-lives" class="hud-lives"></div>
+                    <div id="hud-lives" class="hud-lives">
+                        <span class="life">❤️</span>
+                        <span class="life">❤️</span>
+                        <span class="life">❤️</span>
+                    </div>
                 </div>
                 <div class="hud-center">
                     <div id="hud-score" class="hud-score">0</div>
-                    <div id="hud-combo" class="hud-combo"></div>
                 </div>
                 <div class="hud-right">
                     <div id="hud-level" class="hud-level">LV 1</div>
+                    <div id="hud-timer" class="hud-timer">10s</div>
+                </div>
+            </div>
+            <div class="timer-bar-bg">
+                <div id="timer-bar" class="timer-fill"></div>
+            </div>
+        </div>
+
+        <!-- Duo HUD overlay -->
+        <div id="duo-hud" class="screen duo-hud-screen">
+            <div class="duo-bar">
+                <div class="duo-player p1">
+                    <span class="duo-label">P1</span>
+                    <span id="p1-score" class="duo-score">0</span>
+                </div>
+                <div id="duo-round" class="duo-round">Round 1/10</div>
+                <div class="duo-player p2">
+                    <span class="duo-label">P2</span>
+                    <span id="p2-score" class="duo-score">0</span>
                 </div>
             </div>
         </div>
 
-        <!-- Game Over Screen -->
+        <!-- Buzz-in Buttons (VS mode) -->
+        <div id="buzz-panel" class="screen buzz-panel">
+            <button id="buzz-p1" class="buzz-btn buzz-p1">
+                <span class="buzz-emoji">🔴</span>
+                <span class="buzz-text">P1 BUZZ</span>
+            </button>
+            <div class="buzz-vs">VS</div>
+            <button id="buzz-p2" class="buzz-btn buzz-p2">
+                <span class="buzz-emoji">🔵</span>
+                <span class="buzz-text">P2 BUZZ</span>
+            </button>
+        </div>
+
+        <!-- Game Over -->
         <div id="screen-gameover" class="screen">
-            <div class="gameover-content">
-                <div class="gameover-title">Game Over</div>
-                <div id="final-score" class="final-score">0</div>
-                <div id="new-best-badge" class="new-best-badge">🎉 NEW BEST! 🎉</div>
-                <div id="final-highscore" class="final-highscore">Best: 0</div>
-                <button id="btn-replay" class="btn btn-replay">↻ PLAY AGAIN</button>
+            <div class="gameover-wrap">
+                <div class="gameover-card">
+                    <div id="go-title" class="go-title">GAME OVER</div>
+                    <div id="go-score" class="go-score">0</div>
+                    <div id="go-subtext" class="go-subtext">Level 1 reached</div>
+                    <div id="go-best" class="go-best"></div>
+                    <div class="go-buttons">
+                        <button id="btn-replay" class="btn btn-primary btn-sm">PLAY AGAIN</button>
+                        <button id="btn-menu" class="btn btn-ghost btn-sm">MENU</button>
+                    </div>
+                </div>
             </div>
         </div>
     </div>

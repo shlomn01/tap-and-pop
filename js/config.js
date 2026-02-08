@@ -1,89 +1,60 @@
-// config.js - All game constants & difficulty table
+// config.js - Game constants for Spot the Shape
 
 export const GAME_WIDTH = 720;
 export const GAME_HEIGHT = 1280;
 
-export const MAX_LIVES = 5;
-export const COMBO_WINDOW_MS = 800;
-export const MAX_COMBO_MULTIPLIER = 5;
-export const DIFFICULTY_INTERVAL_MS = 15000;
-
-export const FRUITS = [
-    { type: 'blueberry',   points: 10, color: '#6366f1', radius: 0.8 },
-    { type: 'grape',       points: 15, color: '#a855f7', radius: 0.75 },
-    { type: 'cherry',      points: 15, color: '#ef4444', radius: 0.7 },
-    { type: 'lemon',       points: 20, color: '#facc15', radius: 0.85 },
-    { type: 'strawberry',  points: 25, color: '#f43f5e', radius: 0.8 },
-    { type: 'orange',      points: 30, color: '#f97316', radius: 0.9 },
-    { type: 'apple',       points: 35, color: '#22c55e', radius: 0.9 },
-    { type: 'watermelon',  points: 50, color: '#10b981', radius: 1.1 },
+export const SHAPES = [
+    'star', 'heart', 'diamond', 'moon', 'sun', 'cloud', 'lightning',
+    'tree', 'flower', 'fish', 'duck', 'car', 'house', 'rocket',
+    'crown', 'umbrella', 'butterfly', 'anchor', 'music_note', 'key'
 ];
 
-export const SPECIAL_TYPES = {
-    STAR:  { type: 'star',  points: 100, color: '#fbbf24', radius: 0.9 },
-    BOMB:  { type: 'bomb',  points: 0,   color: '#1f2937', radius: 0.85 },
-    HEART: { type: 'heart', points: 0,   color: '#ec4899', radius: 0.8 },
-};
-
-export const SPECIAL_SPAWN_CHANCE = 0.12;
-export const BOMB_RATIO = 0.4;
-export const STAR_RATIO = 0.35;
-export const HEART_RATIO = 0.25;
-
-export const BASE_ENTITY_RADIUS = 50;
-
-// Difficulty levels - index 0 = level 1, etc.
+// Difficulty levels for single player
 export const DIFFICULTY_TABLE = [
-    { spawnInterval: 1200, ttl: 4000, radiusScale: 1.0,  maxOnScreen: 5  },
-    { spawnInterval: 1050, ttl: 3700, radiusScale: 0.95, maxOnScreen: 6  },
-    { spawnInterval: 900,  ttl: 3400, radiusScale: 0.90, maxOnScreen: 7  },
-    { spawnInterval: 800,  ttl: 3100, radiusScale: 0.85, maxOnScreen: 8  },
-    { spawnInterval: 700,  ttl: 2800, radiusScale: 0.80, maxOnScreen: 9  },
-    { spawnInterval: 600,  ttl: 2500, radiusScale: 0.75, maxOnScreen: 10 },
-    { spawnInterval: 520,  ttl: 2300, radiusScale: 0.72, maxOnScreen: 11 },
-    { spawnInterval: 450,  ttl: 2100, radiusScale: 0.68, maxOnScreen: 12 },
-    { spawnInterval: 400,  ttl: 1900, radiusScale: 0.65, maxOnScreen: 13 },
-    { spawnInterval: 350,  ttl: 1700, radiusScale: 0.60, maxOnScreen: 14 },
+    { shapeCount: 6,  speed: 40,  minSize: 90,  maxSize: 120, timeLimit: 12 },
+    { shapeCount: 8,  speed: 50,  minSize: 85,  maxSize: 115, timeLimit: 11 },
+    { shapeCount: 10, speed: 55,  minSize: 80,  maxSize: 110, timeLimit: 10 },
+    { shapeCount: 12, speed: 60,  minSize: 75,  maxSize: 105, timeLimit: 9 },
+    { shapeCount: 14, speed: 70,  minSize: 70,  maxSize: 100, timeLimit: 8 },
+    { shapeCount: 16, speed: 80,  minSize: 65,  maxSize: 95,  timeLimit: 7 },
+    { shapeCount: 18, speed: 90,  minSize: 60,  maxSize: 90,  timeLimit: 7 },
+    { shapeCount: 20, speed: 100, minSize: 55,  maxSize: 85,  timeLimit: 6 },
+    { shapeCount: 22, speed: 110, minSize: 50,  maxSize: 80,  timeLimit: 6 },
+    { shapeCount: 25, speed: 120, minSize: 45,  maxSize: 75,  timeLimit: 5 },
 ];
 
-export const PARTICLE_COUNT = 12;
-export const PARTICLE_LIFETIME = 500;
-export const FLOAT_TEXT_LIFETIME = 800;
-export const SCREEN_SHAKE_DURATION = 300;
-export const SCREEN_SHAKE_INTENSITY = 8;
+// Two player settings
+export const TWO_PLAYER_SHAPES = 12;
+export const TWO_PLAYER_SPEED = 55;
+export const TWO_PLAYER_MIN_SIZE = 70;
+export const TWO_PLAYER_MAX_SIZE = 100;
+export const TWO_PLAYER_ROUNDS = 10;
+export const BUZZ_TIMEOUT_MS = 4000;
 
-export const STORAGE_KEY = 'tapandpop_highscore';
+export const BOARD_TOP = 120;
+export const BOARD_BOTTOM = 950;
+export const TARGET_AREA_Y = 1080;
+
+export const STORAGE_KEY = 'spotshape_highscore';
 
 export const ASSET_MANIFEST = {
-    images: {
-        blueberry:   'assets/images/blueberry.png',
-        grape:       'assets/images/grape.png',
-        cherry:      'assets/images/cherry.png',
-        lemon:       'assets/images/lemon.png',
-        strawberry:  'assets/images/strawberry.png',
-        orange:      'assets/images/orange.png',
-        apple:       'assets/images/apple.png',
-        watermelon:  'assets/images/watermelon.png',
-        star:        'assets/images/star.png',
-        bomb:        'assets/images/bomb.png',
-        heart:       'assets/images/heart.png',
-        heartIcon:   'assets/images/heart_icon.png',
-        background:  'assets/images/background.png',
-        logo:        'assets/images/logo.png',
-        popBurst:    'assets/images/pop_burst.png',
-        btnPlay:     'assets/images/btn_play.png',
-        btnReplay:   'assets/images/btn_replay.png',
-        btnSound:    'assets/images/btn_sound.png',
-    },
+    shapes: {},
     audio: {
-        pop:         'assets/audio/pop.wav',
-        starCollect: 'assets/audio/star_collect.wav',
-        bombExplode: 'assets/audio/bomb_explode.wav',
-        heartCollect:'assets/audio/heart_collect.wav',
-        lifeLost:    'assets/audio/life_lost.wav',
-        gameOver:    'assets/audio/game_over.wav',
-        btnClick:    'assets/audio/btn_click.wav',
-        menuMusic:   'assets/audio/menu_music.wav',
-        gameMusic:   'assets/audio/game_music.wav',
+        correct:   'assets/audio/correct.wav',
+        wrong:     'assets/audio/wrong.wav',
+        btnClick:  'assets/audio/btn_click.wav',
+        roundWin:  'assets/audio/round_win.wav',
+        gameOver:  'assets/audio/game_over.wav',
+        buzz:      'assets/audio/buzz.wav',
+        tick:      'assets/audio/tick.wav',
+        menuMusic: 'assets/audio/menu_music.wav',
+        gameMusic: 'assets/audio/game_music.wav',
     }
 };
+
+// Dynamically populate shape assets
+SHAPES.forEach(s => {
+    ASSET_MANIFEST.shapes[s] = `assets/images/shapes/${s}.png`;
+});
+
+export const PARTICLE_COUNT = 10;
