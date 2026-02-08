@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="he" dir="rtl">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
@@ -29,24 +29,29 @@
             <div class="menu-wrap">
                 <div class="menu-title-group">
                     <div class="menu-icon">🔍</div>
-                    <h1 class="menu-title">SPOT THE<br>SHAPE</h1>
-                    <div class="menu-subtitle">Find the matching shape before time runs out!</div>
+                    <h1 id="menu-title" class="menu-title">SPOT THE<br>SHAPE</h1>
+                    <div id="menu-subtitle" class="menu-subtitle">Find the matching shape before time runs out!</div>
                 </div>
 
                 <div class="menu-buttons">
                     <button id="btn-solo" class="btn btn-primary">
                         <span class="btn-icon">👤</span>
-                        <span class="btn-text"><span class="btn-label">SOLO MODE</span><span class="btn-desc">Progressive difficulty</span></span>
+                        <span class="btn-text"><span id="btn-solo-label" class="btn-label">SOLO MODE</span><span id="btn-solo-desc" class="btn-desc">Progressive difficulty</span></span>
                     </button>
                     <button id="btn-duo" class="btn btn-secondary">
                         <span class="btn-icon">👥</span>
-                        <span class="btn-text"><span class="btn-label">VS MODE</span><span class="btn-desc">Race to spot first!</span></span>
+                        <span class="btn-text"><span id="btn-duo-label" class="btn-label">VS MODE</span><span id="btn-duo-desc" class="btn-desc">Race to spot first!</span></span>
                     </button>
                 </div>
 
+                <button id="btn-how-to-play" class="btn-how-to-play">How to play?</button>
+
                 <div class="menu-footer">
                     <div id="menu-highscore" class="menu-best">Best: 0</div>
-                    <button id="btn-sound" class="btn-sound">🔊</button>
+                    <div class="menu-footer-right">
+                        <button id="btn-lang" class="btn-lang">🇬🇧</button>
+                        <button id="btn-sound" class="btn-sound">🔊</button>
+                    </div>
                 </div>
             </div>
         </div>
@@ -93,43 +98,43 @@
         <div id="buzz-panel" class="screen buzz-panel">
             <button id="buzz-p1" class="buzz-btn buzz-p1">
                 <span class="buzz-emoji">🔴</span>
-                <span class="buzz-text">P1 BUZZ</span>
+                <span id="buzz-p1-text" class="buzz-text">P1 BUZZ</span>
             </button>
             <div class="buzz-vs">VS</div>
             <button id="buzz-p2" class="buzz-btn buzz-p2">
                 <span class="buzz-emoji">🔵</span>
-                <span class="buzz-text">P2 BUZZ</span>
+                <span id="buzz-p2-text" class="buzz-text">P2 BUZZ</span>
             </button>
         </div>
 
-        <!-- Instructions Panel (Hebrew) -->
+        <!-- Instructions Panel -->
         <div id="instructions-panel" class="instructions-panel">
-            <div class="instructions-card" dir="rtl">
-                <h2 class="instructions-title">איך משחקים?</h2>
+            <div class="instructions-card">
+                <h2 id="instr-title" class="instructions-title">?איך משחקים</h2>
                 <div class="instructions-body">
                     <div class="instruction-item">
                         <span class="instruction-icon">👤</span>
                         <div>
-                            <strong>משחק יחיד:</strong>
-                            צורה מופיעה למטה - מצאו אותה בין הצורות הצפות למעלה! כל סיבוב הזמן מתקצר והצורות מתרבות.
+                            <strong id="instr-solo-title">:משחק יחיד</strong>
+                            <span id="instr-solo-body">צורה מופיעה למטה - מצאו אותה בין הצורות הצפות למעלה! כל סיבוב הזמן מתקצר והצורות מתרבות.</span>
                         </div>
                     </div>
                     <div class="instruction-item">
                         <span class="instruction-icon">👥</span>
                         <div>
-                            <strong>משחק לשניים:</strong>
-                            שני שחקנים מתחרים! לחצו על כפתור ה-BUZZ שלכם כשזיהיתם את הצורה, ואז הקישו עליה. שחקן שטועה - הנקודה ליריב!
+                            <strong id="instr-vs-title">:משחק לשניים</strong>
+                            <span id="instr-vs-body">שני שחקנים מתחרים! לחצו על כפתור ה-BUZZ שלכם כשזיהיתם את הצורה, ואז הקישו עליה. שחקן שטועה - הנקודה ליריב!</span>
                         </div>
                     </div>
                     <div class="instruction-item">
                         <span class="instruction-icon">⏱️</span>
                         <div>
-                            <strong>טיפ:</strong>
-                            צורות גדולות קלות לזיהוי אבל הקטנות שוות יותר נקודות. תהיו מהירים!
+                            <strong id="instr-tip-title">:טיפ</strong>
+                            <span id="instr-tip-body">צורות גדולות קלות לזיהוי אבל הקטנות שוות יותר נקודות. תהיו מהירים!</span>
                         </div>
                     </div>
                 </div>
-                <button id="btn-close-instructions" class="btn btn-ghost btn-sm instructions-close">הבנתי!</button>
+                <button id="btn-close-instructions" class="btn btn-ghost btn-sm instructions-close"><span class="btn-label">!הבנתי</span></button>
             </div>
         </div>
 
@@ -142,8 +147,8 @@
                     <div id="go-subtext" class="go-subtext">Level 1 reached</div>
                     <div id="go-best" class="go-best"></div>
                     <div class="go-buttons">
-                        <button id="btn-replay" class="btn btn-primary btn-sm">PLAY AGAIN</button>
-                        <button id="btn-menu" class="btn btn-ghost btn-sm">MENU</button>
+                        <button id="btn-replay" class="btn btn-primary btn-sm"><span class="btn-label">PLAY AGAIN</span></button>
+                        <button id="btn-menu" class="btn btn-ghost btn-sm"><span class="btn-label">MENU</span></button>
                     </div>
                 </div>
             </div>

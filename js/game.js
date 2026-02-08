@@ -7,6 +7,7 @@ import {
     TWO_PLAYER_MAX_SIZE, TWO_PLAYER_ROUNDS, BUZZ_TIMEOUT_MS,
     STORAGE_KEY
 } from './config.js';
+import { t, shapeName, getLang } from './i18n.js';
 
 export const State = {
     LOADING: 'LOADING',
@@ -631,7 +632,7 @@ export class Game {
         this.floatingTexts.push(new FloatingText(shape.x, shape.y, `+${points}`, '#22C55E'));
         this.onScoreChange?.();
         this._playSound('roundWin');
-        this._showTransition(`Level ${this.level + 1}!`, 1200, State.PLAYING_SOLO);
+        this._showTransition(t('game.level', this.level + 1), 1200, State.PLAYING_SOLO);
     }
 
     _wrongTapSolo(shape) {
@@ -664,7 +665,7 @@ export class Game {
         if (this.currentRound >= TWO_PLAYER_ROUNDS) {
             this._gameOver();
         } else {
-            this._showTransition(`Round ${this.currentRound + 1}`, 1200, State.PLAYING_DUO);
+            this._showTransition(t('game.round', this.currentRound + 1), 1200, State.PLAYING_DUO);
         }
     }
 
@@ -684,7 +685,7 @@ export class Game {
         if (this.currentRound >= TWO_PLAYER_ROUNDS) {
             this._gameOver();
         } else {
-            this._showTransition(`Round ${this.currentRound + 1}`, 1200, State.PLAYING_DUO);
+            this._showTransition(t('game.round', this.currentRound + 1), 1200, State.PLAYING_DUO);
         }
 
         if (navigator.vibrate) navigator.vibrate(50);
@@ -774,7 +775,7 @@ export class Game {
                     if (this.lives <= 0) {
                         this._gameOver();
                     } else {
-                        this._showTransition('Time\'s up!', 1000, State.PLAYING_SOLO);
+                        this._showTransition(t('game.timesUp'), 1000, State.PLAYING_SOLO);
                     }
                 } else if (this.state === State.DUO_BUZZED) {
                     // Buzzed player ran out of time - opponent scores
@@ -788,14 +789,14 @@ export class Game {
                     if (this.currentRound >= TWO_PLAYER_ROUNDS) {
                         this._gameOver();
                     } else {
-                        this._showTransition('Time\'s up!', 1000, State.PLAYING_DUO);
+                        this._showTransition(t('game.timesUp'), 1000, State.PLAYING_DUO);
                     }
                 } else {
                     // Duo mode - no one buzzed in time
                     if (this.currentRound >= TWO_PLAYER_ROUNDS) {
                         this._gameOver();
                     } else {
-                        this._showTransition('Time\'s up!', 1000, State.PLAYING_DUO);
+                        this._showTransition(t('game.timesUp'), 1000, State.PLAYING_DUO);
                     }
                 }
             }
@@ -814,7 +815,7 @@ export class Game {
                     if (this.currentRound >= TWO_PLAYER_ROUNDS) {
                         this._gameOver();
                     } else {
-                        this._showTransition('Too slow!', 1000, State.PLAYING_DUO);
+                        this._showTransition(t('game.tooSlow'), 1000, State.PLAYING_DUO);
                     }
                 }
             }
@@ -991,34 +992,62 @@ export class Game {
         ctx.fillRect(panelX, panelY, panelW, 2);
         ctx.restore();
 
-        // "FIND:" label with icon-style
-        ctx.font = 'bold 22px "Fredoka One", Arial';
-        ctx.fillStyle = 'rgba(129, 140, 248, 0.85)';
-        ctx.textAlign = 'left';
-        ctx.textBaseline = 'middle';
-        ctx.fillText('FIND:', 48, panelY + panelH / 2);
+        // Layout: RTL-aware
+        const isRTL = getLang() === 'he';
+        const findLabel = t('game.find');
 
-        // Target shape
-        if (this.targetShape && this.images[this.targetShape]) {
-            const img = this.images[this.targetShape];
-            const size = 110;
-            const tx = 200;
-            const ty = panelY + panelH / 2;
+        if (isRTL) {
+            // RTL: shape name on right, image in middle, FIND label on left
+            ctx.font = 'bold 22px "Fredoka One", Arial';
+            ctx.fillStyle = 'rgba(129, 140, 248, 0.85)';
+            ctx.textAlign = 'right';
+            ctx.textBaseline = 'middle';
+            ctx.fillText(findLabel, panelX + panelW - 28, panelY + panelH / 2);
 
-            // Pulsing glow behind target
-            const pulse = 0.7 + 0.3 * Math.sin(this._globalTime / 400);
-            ctx.shadowColor = `rgba(129,140,248,${0.4 * pulse})`;
-            ctx.shadowBlur = 25 + pulse * 10;
-            ctx.drawImage(img, tx - size / 2, ty - size / 2, size, size);
-            ctx.shadowBlur = 0;
+            if (this.targetShape && this.images[this.targetShape]) {
+                const img = this.images[this.targetShape];
+                const size = 110;
+                const tx = panelX + panelW - 148;
+                const ty = panelY + panelH / 2;
 
-            // Shape name
-            ctx.font = 'bold 24px "Fredoka One", Arial';
-            ctx.fillStyle = '#E2E8F0';
+                const pulse = 0.7 + 0.3 * Math.sin(this._globalTime / 400);
+                ctx.shadowColor = `rgba(129,140,248,${0.4 * pulse})`;
+                ctx.shadowBlur = 25 + pulse * 10;
+                ctx.drawImage(img, tx - size / 2, ty - size / 2, size, size);
+                ctx.shadowBlur = 0;
+
+                ctx.font = 'bold 24px "Fredoka One", Arial';
+                ctx.fillStyle = '#E2E8F0';
+                ctx.textAlign = 'right';
+                ctx.textBaseline = 'middle';
+                ctx.fillText(shapeName(this.targetShape), tx - size / 2 - 12, ty);
+            }
+        } else {
+            // LTR layout (original)
+            ctx.font = 'bold 22px "Fredoka One", Arial';
+            ctx.fillStyle = 'rgba(129, 140, 248, 0.85)';
             ctx.textAlign = 'left';
             ctx.textBaseline = 'middle';
-            const name = this.targetShape.replace('_', ' ').toUpperCase();
-            ctx.fillText(name, tx + size / 2 + 12, ty);
+            ctx.fillText(findLabel, 48, panelY + panelH / 2);
+
+            if (this.targetShape && this.images[this.targetShape]) {
+                const img = this.images[this.targetShape];
+                const size = 110;
+                const tx = 200;
+                const ty = panelY + panelH / 2;
+
+                const pulse = 0.7 + 0.3 * Math.sin(this._globalTime / 400);
+                ctx.shadowColor = `rgba(129,140,248,${0.4 * pulse})`;
+                ctx.shadowBlur = 25 + pulse * 10;
+                ctx.drawImage(img, tx - size / 2, ty - size / 2, size, size);
+                ctx.shadowBlur = 0;
+
+                ctx.font = 'bold 24px "Fredoka One", Arial';
+                ctx.fillStyle = '#E2E8F0';
+                ctx.textAlign = 'left';
+                ctx.textBaseline = 'middle';
+                ctx.fillText(shapeName(this.targetShape), tx + size / 2 + 12, ty);
+            }
         }
 
         ctx.restore();
@@ -1047,7 +1076,7 @@ export class Game {
         ctx.fillStyle = textColor;
         ctx.textAlign = 'center';
         ctx.textBaseline = 'top';
-        ctx.fillText(`Player ${player} is looking...`, GAME_WIDTH / 2, BOARD_TOP - 45);
+        ctx.fillText(t('game.playerLooking', player), GAME_WIDTH / 2, BOARD_TOP - 45);
         ctx.restore();
     }
 
