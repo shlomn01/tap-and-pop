@@ -122,135 +122,258 @@ class FloatingText {
         this.x = x; this.y = y;
         this.text = text;
         this.color = color;
-        this.life = 800;
+        this.life = 900;
         this.elapsed = 0;
+        this.startScale = 1.5;
     }
     update(dt) {
         this.elapsed += dt;
-        this.y -= dt * 0.08;
+        this.y -= dt * 0.09;
     }
     draw(ctx) {
         const p = 1 - this.elapsed / this.life;
         if (p <= 0) return;
+        const scale = this.startScale - (this.startScale - 1) * Math.min(1, this.elapsed / 150);
         ctx.save();
         ctx.globalAlpha = p;
-        ctx.font = 'bold 32px "Fredoka One", Arial';
+        ctx.translate(this.x, this.y);
+        ctx.scale(scale, scale);
+        ctx.font = 'bold 34px "Fredoka One", Arial';
         ctx.fillStyle = this.color;
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
-        ctx.shadowColor = 'rgba(0,0,0,0.3)';
-        ctx.shadowBlur = 4;
-        ctx.fillText(this.text, this.x, this.y);
+        ctx.shadowColor = this.color;
+        ctx.shadowBlur = 12;
+        ctx.fillText(this.text, 0, 0);
+        // Outline
+        ctx.strokeStyle = 'rgba(0,0,0,0.3)';
+        ctx.lineWidth = 2;
+        ctx.strokeText(this.text, 0, 0);
         ctx.restore();
     }
     get alive() { return this.elapsed < this.life; }
 }
 
-// --- Web Audio Manager ---
+// --- Web Audio Manager (bulletproof, Howler.js-inspired) ---
 export class AudioManager {
     constructor() {
-        const AudioCtx = window.AudioContext || window.webkitAudioContext;
-        if (!AudioCtx) { this.ctx = null; return; }
-
-        this.ctx = new AudioCtx();
-        this.masterGain = this.ctx.createGain();
-        this.masterGain.connect(this.ctx.destination);
-        this.sfxGain = this.ctx.createGain();
-        this.sfxGain.gain.value = 0.8;
-        this.sfxGain.connect(this.masterGain);
-        this.musicGain = this.ctx.createGain();
-        this.musicGain.gain.value = 0.5;
-        this.musicGain.connect(this.masterGain);
-
-        this.buffers = {};
-        this.musicSource = null;
-        this.currentMusicName = null;
-
-        this._setupUnlock();
+        this._ctx = null;
+        this._masterGain = null;
+        this._sfxGain = null;
+        this._musicGain = null;
+        this._buffers = {};
+        this._rawData = {};
+        this._musicSource = null;
+        this._currentMusic = null;
+        this._unlocked = false;
+        this._muted = false;
+        this._queue = [];
+        this._setupGestureUnlock();
     }
 
-    _setupUnlock() {
+    _getCtx() {
+        if (!this._ctx) {
+            const AC = window.AudioContext || window.webkitAudioContext;
+            if (!AC) return null;
+            this._ctx = new AC();
+            this._masterGain = this._ctx.createGain();
+            this._masterGain.connect(this._ctx.destination);
+            this._sfxGain = this._ctx.createGain();
+            this._sfxGain.gain.value = 0.8;
+            this._sfxGain.connect(this._masterGain);
+            this._musicGain = this._ctx.createGain();
+            this._musicGain.gain.value = 0.5;
+            this._musicGain.connect(this._masterGain);
+            this._ctx.onstatechange = () => {
+                if (this._ctx.state === 'running') this._processQueue();
+            };
+        }
+        return this._ctx;
+    }
+
+    _setupGestureUnlock() {
         const events = ['click', 'touchstart', 'touchend', 'pointerdown', 'keydown'];
-        const unlock = () => {
-            if (!this.ctx) return;
-            if (this.ctx.state === 'suspended' || this.ctx.state === 'interrupted') {
-                this.ctx.resume();
-            }
-            if (this.ctx.state === 'running') {
-                events.forEach(e => document.removeEventListener(e, unlock, true));
+        const handler = () => {
+            this._unlock();
+            if (this._unlocked) {
+                events.forEach(e => document.removeEventListener(e, handler, true));
             }
         };
-        events.forEach(e => document.addEventListener(e, unlock, true));
-
+        events.forEach(e => document.addEventListener(e, handler, { capture: true, passive: true }));
         document.addEventListener('visibilitychange', () => {
-            if (document.visibilityState === 'visible' && this.ctx &&
-                (this.ctx.state === 'suspended' || this.ctx.state === 'interrupted')) {
-                this.ctx.resume();
+            if (document.visibilityState === 'visible' && this._ctx) {
+                this._ctx.resume().catch(() => {});
             }
         });
     }
 
-    resume() {
-        if (this.ctx && this.ctx.state !== 'running') {
-            this.ctx.resume();
+    _unlock() {
+        const ctx = this._getCtx();
+        if (!ctx || this._unlocked) return;
+        if (ctx.state !== 'running') ctx.resume().catch(() => {});
+        // Silent buffer trick for iOS Safari
+        try {
+            const buf = ctx.createBuffer(1, 1, 22050);
+            const src = ctx.createBufferSource();
+            src.buffer = buf;
+            src.connect(ctx.destination);
+            src.start(0);
+        } catch (e) {}
+        // Check if running now, or wait for onstatechange
+        if (ctx.state === 'running') {
+            this._unlocked = true;
+            this._decodeRaw();
+            this._processQueue();
+        } else {
+            // Will be handled by onstatechange
+            const check = () => {
+                if (ctx.state === 'running') {
+                    this._unlocked = true;
+                    this._decodeRaw();
+                    this._processQueue();
+                } else {
+                    setTimeout(check, 50);
+                }
+            };
+            setTimeout(check, 50);
         }
     }
 
     async loadBuffer(name, url) {
-        if (!this.ctx) return;
         try {
             const resp = await fetch(url);
-            if (!resp.ok) { console.warn(`Audio fetch failed: ${url} (${resp.status})`); return; }
-            const arrayBuf = await resp.arrayBuffer();
-            this.buffers[name] = await this.ctx.decodeAudioData(arrayBuf);
-        } catch (e) {
-            console.warn(`Audio decode failed: ${name}`, e);
+            if (!resp.ok) return;
+            const raw = await resp.arrayBuffer();
+            this._rawData[name] = raw;
+            const ctx = this._getCtx();
+            if (ctx) {
+                try {
+                    this._buffers[name] = await ctx.decodeAudioData(raw.slice(0));
+                } catch (e) { /* will retry after unlock */ }
+            }
+        } catch (e) {}
+    }
+
+    async _decodeRaw() {
+        const ctx = this._getCtx();
+        if (!ctx) return;
+        for (const name of Object.keys(this._rawData)) {
+            if (!this._buffers[name] && this._rawData[name]) {
+                try {
+                    this._buffers[name] = await ctx.decodeAudioData(this._rawData[name].slice(0));
+                } catch (e) {}
+            }
+        }
+        this._processQueue();
+    }
+
+    _processQueue() {
+        const pending = [...this._queue];
+        this._queue = [];
+        for (const item of pending) {
+            if (item.type === 'music') this._doPlayMusic(item.name, item.volume);
+            else this._doPlaySFX(item.name, item.volume);
         }
     }
 
     playSFX(name, volume = 1) {
-        if (!this.ctx || !this.buffers[name]) return;
-        this.resume();
-        const src = this.ctx.createBufferSource();
-        src.buffer = this.buffers[name];
-        if (volume !== 1) {
-            const gain = this.ctx.createGain();
-            gain.gain.value = volume;
-            src.connect(gain);
-            gain.connect(this.sfxGain);
-        } else {
-            src.connect(this.sfxGain);
+        if (this._muted) return;
+        const ctx = this._getCtx();
+        if (!ctx || !this._buffers[name] || ctx.state !== 'running') {
+            if (this._rawData[name]) this._queue.push({ type: 'sfx', name, volume });
+            return;
         }
-        src.start(0);
+        this._doPlaySFX(name, volume);
+    }
+
+    _doPlaySFX(name, volume) {
+        const ctx = this._getCtx();
+        if (!ctx || !this._buffers[name]) return;
+        try {
+            const src = ctx.createBufferSource();
+            src.buffer = this._buffers[name];
+            if (volume !== 1) {
+                const g = ctx.createGain();
+                g.gain.value = volume;
+                src.connect(g);
+                g.connect(this._sfxGain);
+            } else {
+                src.connect(this._sfxGain);
+            }
+            src.start(0);
+        } catch (e) {}
     }
 
     playMusic(name, volume = 0.5) {
-        if (!this.ctx || !this.buffers[name]) return;
-        if (this.currentMusicName === name && this.musicSource) return;
+        if (this._muted) return;
+        const ctx = this._getCtx();
+        // Remove any pending music from queue
+        this._queue = this._queue.filter(q => q.type !== 'music');
+        if (!ctx || !this._buffers[name] || ctx.state !== 'running') {
+            this._queue.push({ type: 'music', name, volume });
+            if (ctx && ctx.state !== 'running') ctx.resume().catch(() => {});
+            return;
+        }
+        this._doPlayMusic(name, volume);
+    }
+
+    _doPlayMusic(name, volume) {
+        const ctx = this._getCtx();
+        if (!ctx || !this._buffers[name]) return;
+        if (this._currentMusic === name && this._musicSource) return;
         this.stopMusic();
-        this.resume();
-        this.musicGain.gain.value = volume;
-        const src = this.ctx.createBufferSource();
-        src.buffer = this.buffers[name];
-        src.loop = true;
-        src.connect(this.musicGain);
-        src.start(0);
-        this.musicSource = src;
-        this.currentMusicName = name;
+        try {
+            this._musicGain.gain.value = volume;
+            const src = ctx.createBufferSource();
+            src.buffer = this._buffers[name];
+            src.loop = true;
+            src.connect(this._musicGain);
+            src.start(0);
+            this._musicSource = src;
+            this._currentMusic = name;
+        } catch (e) {}
     }
 
     stopMusic() {
-        if (this.musicSource) {
-            try { this.musicSource.stop(); } catch (e) {}
-            this.musicSource = null;
-            this.currentMusicName = null;
+        this._queue = this._queue.filter(q => q.type !== 'music');
+        if (this._musicSource) {
+            try { this._musicSource.stop(); } catch (e) {}
+            this._musicSource = null;
+            this._currentMusic = null;
         }
     }
 
+    resume() { this._unlock(); }
+
     setMuted(muted) {
-        if (this.masterGain) {
-            this.masterGain.gain.value = muted ? 0 : 1;
-        }
+        this._muted = muted;
+        if (this._masterGain) this._masterGain.gain.value = muted ? 0 : 1;
+        if (muted) this.stopMusic();
+    }
+}
+
+// --- Background star / sparkle ---
+class BgStar {
+    constructor() {
+        this.x = Math.random() * GAME_WIDTH;
+        this.y = Math.random() * GAME_HEIGHT;
+        this.r = 0.5 + Math.random() * 1.5;
+        this.alpha = 0.1 + Math.random() * 0.3;
+        this.speed = 0.2 + Math.random() * 0.5;
+        this.phase = Math.random() * Math.PI * 2;
+        this.twinkleSpeed = 1 + Math.random() * 2;
+    }
+    update(dt) {
+        this.phase += (dt / 1000) * this.twinkleSpeed;
+    }
+    draw(ctx) {
+        const a = this.alpha * (0.5 + 0.5 * Math.sin(this.phase));
+        ctx.globalAlpha = a;
+        ctx.fillStyle = '#c4b5fd';
+        ctx.beginPath();
+        ctx.arc(this.x, this.y, this.r, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.globalAlpha = 1;
     }
 }
 
@@ -283,6 +406,11 @@ export class Game {
         this.shakeTimer = 0;
         this.shakeX = 0;
         this.shakeY = 0;
+        this._globalTime = 0;
+
+        // Background stars
+        this._bgStars = [];
+        for (let i = 0; i < 50; i++) this._bgStars.push(new BgStar());
 
         // Two-player state
         this.p1Score = 0;
@@ -658,6 +786,11 @@ export class Game {
     // --- Update & Render ---
 
     update(dt) {
+        this._globalTime += dt;
+
+        // Animate background stars
+        for (const star of this._bgStars) star.update(dt);
+
         // Shake
         if (this.shakeTimer > 0) {
             this.shakeTimer -= dt;
@@ -747,16 +880,42 @@ export class Game {
         ctx.save();
         ctx.translate(this.shakeX, this.shakeY);
 
-        // Background gradient
-        const grad = ctx.createLinearGradient(0, 0, 0, GAME_HEIGHT);
-        grad.addColorStop(0, '#0f172a');
-        grad.addColorStop(0.5, '#1e1b4b');
-        grad.addColorStop(1, '#0f172a');
+        // Background gradient - richer deep space feel
+        const grad = ctx.createLinearGradient(0, 0, GAME_WIDTH * 0.3, GAME_HEIGHT);
+        grad.addColorStop(0, '#080c1a');
+        grad.addColorStop(0.3, '#12103a');
+        grad.addColorStop(0.6, '#1a0f35');
+        grad.addColorStop(1, '#080c1a');
         ctx.fillStyle = grad;
         ctx.fillRect(-10, -10, GAME_WIDTH + 20, GAME_HEIGHT + 20);
 
-        // Subtle grid
-        ctx.strokeStyle = 'rgba(99, 102, 241, 0.05)';
+        // Ambient glow orbs (subtle, animated)
+        const t = this._globalTime / 1000;
+        ctx.save();
+        ctx.globalCompositeOperation = 'screen';
+        // Purple orb
+        const orbX1 = GAME_WIDTH * 0.2 + Math.sin(t * 0.3) * 80;
+        const orbY1 = GAME_HEIGHT * 0.3 + Math.cos(t * 0.25) * 60;
+        const orbGrad1 = ctx.createRadialGradient(orbX1, orbY1, 0, orbX1, orbY1, 200);
+        orbGrad1.addColorStop(0, 'rgba(99,102,241,0.06)');
+        orbGrad1.addColorStop(1, 'transparent');
+        ctx.fillStyle = orbGrad1;
+        ctx.fillRect(0, 0, GAME_WIDTH, GAME_HEIGHT);
+        // Pink orb
+        const orbX2 = GAME_WIDTH * 0.8 + Math.cos(t * 0.35) * 70;
+        const orbY2 = GAME_HEIGHT * 0.7 + Math.sin(t * 0.2) * 50;
+        const orbGrad2 = ctx.createRadialGradient(orbX2, orbY2, 0, orbX2, orbY2, 180);
+        orbGrad2.addColorStop(0, 'rgba(236,72,153,0.04)');
+        orbGrad2.addColorStop(1, 'transparent');
+        ctx.fillStyle = orbGrad2;
+        ctx.fillRect(0, 0, GAME_WIDTH, GAME_HEIGHT);
+        ctx.restore();
+
+        // Background stars
+        for (const star of this._bgStars) star.draw(ctx);
+
+        // Subtle grid with cross-fade
+        ctx.strokeStyle = 'rgba(99, 102, 241, 0.035)';
         ctx.lineWidth = 1;
         for (let x = 0; x < GAME_WIDTH; x += 60) {
             ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, GAME_HEIGHT); ctx.stroke();
@@ -769,12 +928,23 @@ export class Game {
                            this.state === State.DUO_BUZZED || this.state === State.ROUND_TRANSITION;
 
         if (isPlayState) {
-            // Board area with subtle border
-            ctx.strokeStyle = 'rgba(99, 102, 241, 0.12)';
-            ctx.lineWidth = 2;
-            ctx.setLineDash([8, 4]);
-            ctx.strokeRect(10, BOARD_TOP - 10, GAME_WIDTH - 20, BOARD_BOTTOM - BOARD_TOP + 20);
+            // Board area glow border
+            ctx.save();
+            ctx.strokeStyle = 'rgba(99, 102, 241, 0.08)';
+            ctx.lineWidth = 1;
+            ctx.setLineDash([10, 6]);
+            const bx = 12, by = BOARD_TOP - 10, bw = GAME_WIDTH - 24, bh = BOARD_BOTTOM - BOARD_TOP + 20;
+            ctx.beginPath();
+            ctx.roundRect(bx, by, bw, bh, 16);
+            ctx.stroke();
             ctx.setLineDash([]);
+            // Soft vignette inside board
+            const vig = ctx.createRadialGradient(GAME_WIDTH/2, (BOARD_TOP+BOARD_BOTTOM)/2, 50, GAME_WIDTH/2, (BOARD_TOP+BOARD_BOTTOM)/2, GAME_WIDTH*0.6);
+            vig.addColorStop(0, 'transparent');
+            vig.addColorStop(1, 'rgba(8,12,26,0.15)');
+            ctx.fillStyle = vig;
+            ctx.fillRect(0, BOARD_TOP - 20, GAME_WIDTH, BOARD_BOTTOM - BOARD_TOP + 40);
+            ctx.restore();
 
             // Draw shapes
             for (const s of this.shapes) s.draw(ctx);
@@ -794,18 +964,32 @@ export class Game {
             }
         }
 
-        // Transition text
+        // Transition text with glow ring
         if (this.state === State.ROUND_TRANSITION && this.transitionTimer > 0) {
             ctx.save();
             const progress = 1 - this.transitionTimer / 1200;
-            ctx.globalAlpha = progress < 0.2 ? progress / 0.2 : progress > 0.8 ? (1 - progress) / 0.2 : 1;
+            const alpha = progress < 0.2 ? progress / 0.2 : progress > 0.8 ? (1 - progress) / 0.2 : 1;
+            ctx.globalAlpha = alpha;
+
+            // Expanding ring
+            const ringR = 40 + progress * 120;
+            const ringGrad = ctx.createRadialGradient(GAME_WIDTH/2, GAME_HEIGHT/2, ringR - 5, GAME_WIDTH/2, GAME_HEIGHT/2, ringR + 20);
+            ringGrad.addColorStop(0, 'rgba(99,102,241,0.2)');
+            ringGrad.addColorStop(0.5, 'rgba(139,92,246,0.1)');
+            ringGrad.addColorStop(1, 'transparent');
+            ctx.fillStyle = ringGrad;
+            ctx.fillRect(0, 0, GAME_WIDTH, GAME_HEIGHT);
+
             ctx.font = 'bold 64px "Fredoka One", Arial';
             ctx.fillStyle = '#fff';
             ctx.textAlign = 'center';
             ctx.textBaseline = 'middle';
-            ctx.shadowColor = 'rgba(99, 102, 241, 0.8)';
-            ctx.shadowBlur = 30;
-            ctx.fillText(this.transitionText, GAME_WIDTH / 2, GAME_HEIGHT / 2);
+            ctx.shadowColor = 'rgba(99, 102, 241, 0.9)';
+            ctx.shadowBlur = 40;
+            const scale = progress < 0.15 ? 0.5 + (progress / 0.15) * 0.5 : 1;
+            ctx.translate(GAME_WIDTH / 2, GAME_HEIGHT / 2);
+            ctx.scale(scale, scale);
+            ctx.fillText(this.transitionText, 0, 0);
             ctx.restore();
         }
 
@@ -815,50 +999,73 @@ export class Game {
     _drawTargetArea(ctx) {
         const panelY = TARGET_AREA_Y - 40;
         const panelH = 160;
+        const panelX = 20;
+        const panelW = GAME_WIDTH - 40;
 
         ctx.save();
 
+        // Outer glow
+        ctx.shadowColor = 'rgba(99,102,241,0.15)';
+        ctx.shadowBlur = 30;
+
         // Glass panel background
-        const panelGrad = ctx.createLinearGradient(20, panelY, 20, panelY + panelH);
-        panelGrad.addColorStop(0, 'rgba(15, 23, 42, 0.85)');
-        panelGrad.addColorStop(1, 'rgba(30, 27, 75, 0.9)');
+        const panelGrad = ctx.createLinearGradient(panelX, panelY, panelX, panelY + panelH);
+        panelGrad.addColorStop(0, 'rgba(20, 16, 58, 0.88)');
+        panelGrad.addColorStop(0.5, 'rgba(25, 22, 65, 0.92)');
+        panelGrad.addColorStop(1, 'rgba(12, 17, 38, 0.9)');
         ctx.fillStyle = panelGrad;
         ctx.beginPath();
-        ctx.roundRect(20, panelY, GAME_WIDTH - 40, panelH, 20);
+        ctx.roundRect(panelX, panelY, panelW, panelH, 22);
         ctx.fill();
+        ctx.shadowBlur = 0;
 
-        // Border glow
-        ctx.strokeStyle = 'rgba(99, 102, 241, 0.4)';
-        ctx.lineWidth = 2;
+        // Border with gradient
+        ctx.strokeStyle = 'rgba(99, 102, 241, 0.3)';
+        ctx.lineWidth = 1.5;
         ctx.stroke();
 
-        // "FIND:" label
-        ctx.font = 'bold 24px "Fredoka One", Arial';
-        ctx.fillStyle = 'rgba(148, 163, 184, 0.9)';
+        // Top highlight line
+        ctx.save();
+        ctx.beginPath();
+        ctx.roundRect(panelX + 1, panelY + 1, panelW - 2, panelH - 2, 21);
+        ctx.clip();
+        const hlGrad = ctx.createLinearGradient(panelX, panelY, panelX + panelW, panelY);
+        hlGrad.addColorStop(0, 'transparent');
+        hlGrad.addColorStop(0.3, 'rgba(255,255,255,0.06)');
+        hlGrad.addColorStop(0.7, 'rgba(255,255,255,0.06)');
+        hlGrad.addColorStop(1, 'transparent');
+        ctx.fillStyle = hlGrad;
+        ctx.fillRect(panelX, panelY, panelW, 2);
+        ctx.restore();
+
+        // "FIND:" label with icon-style
+        ctx.font = 'bold 22px "Fredoka One", Arial';
+        ctx.fillStyle = 'rgba(129, 140, 248, 0.85)';
         ctx.textAlign = 'left';
         ctx.textBaseline = 'middle';
-        ctx.fillText('FIND:', 50, panelY + panelH / 2);
+        ctx.fillText('FIND:', 48, panelY + panelH / 2);
 
         // Target shape
         if (this.targetShape && this.images[this.targetShape]) {
             const img = this.images[this.targetShape];
             const size = 110;
-            const tx = 210;
+            const tx = 200;
             const ty = panelY + panelH / 2;
 
-            // Glow
-            ctx.shadowColor = '#818CF8';
-            ctx.shadowBlur = 30;
+            // Pulsing glow behind target
+            const pulse = 0.7 + 0.3 * Math.sin(this._globalTime / 400);
+            ctx.shadowColor = `rgba(129,140,248,${0.4 * pulse})`;
+            ctx.shadowBlur = 25 + pulse * 10;
             ctx.drawImage(img, tx - size / 2, ty - size / 2, size, size);
             ctx.shadowBlur = 0;
 
             // Shape name
-            ctx.font = 'bold 26px "Fredoka One", Arial';
+            ctx.font = 'bold 24px "Fredoka One", Arial';
             ctx.fillStyle = '#E2E8F0';
             ctx.textAlign = 'left';
             ctx.textBaseline = 'middle';
             const name = this.targetShape.replace('_', ' ').toUpperCase();
-            ctx.fillText(name, tx + size / 2 + 15, ty);
+            ctx.fillText(name, tx + size / 2 + 12, ty);
         }
 
         ctx.restore();
