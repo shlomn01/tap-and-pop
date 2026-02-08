@@ -139,7 +139,7 @@ class FloatingText {
         ctx.globalAlpha = p;
         ctx.translate(this.x, this.y);
         ctx.scale(scale, scale);
-        ctx.font = 'bold 34px "Fredoka One", Arial';
+        ctx.font = 'bold 34px "Fredoka One", "Rubik", Arial';
         ctx.fillStyle = this.color;
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
@@ -934,7 +934,7 @@ export class Game {
             ctx.fillStyle = ringGrad;
             ctx.fillRect(0, 0, GAME_WIDTH, GAME_HEIGHT);
 
-            ctx.font = 'bold 64px "Fredoka One", Arial';
+            ctx.font = 'bold 64px "Fredoka One", "Rubik", Arial';
             ctx.fillStyle = '#fff';
             ctx.textAlign = 'center';
             ctx.textBaseline = 'middle';
@@ -998,7 +998,7 @@ export class Game {
 
         if (isRTL) {
             // RTL: shape name on right, image in middle, FIND label on left
-            ctx.font = 'bold 22px "Fredoka One", Arial';
+            ctx.font = 'bold 22px "Fredoka One", "Rubik", Arial';
             ctx.fillStyle = 'rgba(129, 140, 248, 0.85)';
             ctx.textAlign = 'right';
             ctx.textBaseline = 'middle';
@@ -1016,7 +1016,7 @@ export class Game {
                 ctx.drawImage(img, tx - size / 2, ty - size / 2, size, size);
                 ctx.shadowBlur = 0;
 
-                ctx.font = 'bold 24px "Fredoka One", Arial';
+                ctx.font = 'bold 24px "Fredoka One", "Rubik", Arial';
                 ctx.fillStyle = '#E2E8F0';
                 ctx.textAlign = 'right';
                 ctx.textBaseline = 'middle';
@@ -1024,7 +1024,7 @@ export class Game {
             }
         } else {
             // LTR layout (original)
-            ctx.font = 'bold 22px "Fredoka One", Arial';
+            ctx.font = 'bold 22px "Fredoka One", "Rubik", Arial';
             ctx.fillStyle = 'rgba(129, 140, 248, 0.85)';
             ctx.textAlign = 'left';
             ctx.textBaseline = 'middle';
@@ -1042,7 +1042,7 @@ export class Game {
                 ctx.drawImage(img, tx - size / 2, ty - size / 2, size, size);
                 ctx.shadowBlur = 0;
 
-                ctx.font = 'bold 24px "Fredoka One", Arial';
+                ctx.font = 'bold 24px "Fredoka One", "Rubik", Arial';
                 ctx.fillStyle = '#E2E8F0';
                 ctx.textAlign = 'left';
                 ctx.textBaseline = 'middle';
@@ -1072,7 +1072,7 @@ export class Game {
         ctx.fillRect(0, GAME_HEIGHT - 8, GAME_WIDTH * pct, 8);
 
         // "P1/P2 is looking!" text
-        ctx.font = 'bold 20px "Fredoka One", Arial';
+        ctx.font = 'bold 20px "Fredoka One", "Rubik", Arial';
         ctx.fillStyle = textColor;
         ctx.textAlign = 'center';
         ctx.textBaseline = 'top';
