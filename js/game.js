@@ -357,6 +357,26 @@ export class Game {
         this.onScoreChange?.();
     }
 
+    _randomSize(minSize, maxSize) {
+        // Create dramatic size variation: some tiny, some huge
+        // Use weighted random: 30% small, 40% medium, 20% large, 10% extra large
+        const r = Math.random();
+        const range = maxSize - minSize;
+        if (r < 0.3) {
+            // Small: 50%-70% of min
+            return minSize * (0.5 + Math.random() * 0.2);
+        } else if (r < 0.7) {
+            // Medium: normal range
+            return minSize + Math.random() * range;
+        } else if (r < 0.9) {
+            // Large: 1.5x-2.5x of max
+            return maxSize * (1.5 + Math.random() * 1.0);
+        } else {
+            // Extra large: 2.5x-4x of max
+            return maxSize * (2.5 + Math.random() * 1.5);
+        }
+    }
+
     _setupRound() {
         const diff = DIFFICULTY_TABLE[Math.min(this.level, DIFFICULTY_TABLE.length - 1)];
         this.shapes = [];
@@ -375,13 +395,15 @@ export class Game {
         const rows = Math.ceil(diff.shapeCount / 4);
         for (let i = 0; i < boardTypes.length; i++) {
             const type = boardTypes[i];
-            const size = diff.minSize + Math.random() * (diff.maxSize - diff.minSize);
+            const size = this._randomSize(diff.minSize, diff.maxSize);
             const row = Math.floor(i / 4);
             const rowHeight = (BOARD_BOTTOM - BOARD_TOP) / rows;
             const y = BOARD_TOP + rowHeight * row + Math.random() * rowHeight * 0.5 + rowHeight * 0.25;
             const x = Math.random() * GAME_WIDTH;
             const direction = (row % 2 === 0) ? 1 : -1;
-            const speed = (diff.speed + Math.random() * diff.speed * 0.4) * direction;
+            // Bigger shapes move slower, smaller move faster
+            const sizeRatio = diff.minSize / size;
+            const speed = (diff.speed + Math.random() * diff.speed * 0.4) * direction * (0.5 + sizeRatio * 0.8);
             this.shapes.push(new BoardShape(type, x, y, size, speed, this.images[type]));
         }
 
@@ -410,13 +432,14 @@ export class Game {
         const rows = Math.ceil(TWO_PLAYER_SHAPES / 4);
         for (let i = 0; i < boardTypes.length; i++) {
             const type = boardTypes[i];
-            const size = TWO_PLAYER_MIN_SIZE + Math.random() * (TWO_PLAYER_MAX_SIZE - TWO_PLAYER_MIN_SIZE);
+            const size = this._randomSize(TWO_PLAYER_MIN_SIZE, TWO_PLAYER_MAX_SIZE);
             const row = Math.floor(i / 4);
             const rowHeight = (BOARD_BOTTOM - BOARD_TOP) / rows;
             const y = BOARD_TOP + rowHeight * row + Math.random() * rowHeight * 0.5 + rowHeight * 0.25;
             const x = Math.random() * GAME_WIDTH;
             const direction = (row % 2 === 0) ? 1 : -1;
-            const speed = (TWO_PLAYER_SPEED + Math.random() * 30) * direction;
+            const sizeRatio = TWO_PLAYER_MIN_SIZE / size;
+            const speed = (TWO_PLAYER_SPEED + Math.random() * 30) * direction * (0.5 + sizeRatio * 0.8);
             this.shapes.push(new BoardShape(type, x, y, size, speed, this.images[type]));
         }
 
@@ -822,9 +845,14 @@ export class Game {
         ctx.restore();
     }
 
+    // Called from UI on first user interaction to start menu music
+    startMenuMusic() {
+        this._unlockAudio();
+        this._playMusic('menu');
+    }
+
     // --- Game loop ---
     start() {
-        // Don't auto-play music here - wait for user gesture
         this.lastTime = performance.now();
         this._loop();
     }

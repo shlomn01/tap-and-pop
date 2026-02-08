@@ -98,11 +98,22 @@ class UIController {
     }
 
     _bind() {
+        // Start menu music on any first interaction
+        this._musicStarted = false;
+        const startMusic = () => {
+            if (!this._musicStarted) {
+                this._musicStarted = true;
+                this.game.startMenuMusic();
+            }
+        };
+
         this.els.btnSolo?.addEventListener('click', () => {
+            startMusic();
             this._lastMode = 'solo';
             this.game.startSolo();
         });
         this.els.btnDuo?.addEventListener('click', () => {
+            startMusic();
             this._lastMode = 'duo';
             this.game.startDuo();
         });
@@ -114,7 +125,12 @@ class UIController {
             }
         });
         this.els.btnMenu?.addEventListener('click', () => this.game.goToMenu());
+
+        // Start music on any tap on the menu screen
+        this.els.menu?.addEventListener('click', () => startMusic());
+        this.els.menu?.addEventListener('touchstart', () => startMusic(), { passive: true });
         this.els.btnSound?.addEventListener('click', () => {
+            startMusic();
             const on = this.game.toggleSound();
             this.els.btnSound.textContent = on ? '🔊' : '🔇';
             this.els.btnSound.classList.toggle('muted', !on);
