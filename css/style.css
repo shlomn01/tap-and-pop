@@ -374,6 +374,84 @@ html, body {
     pointer-events: auto;
 }
 
+/* ===== Instructions Panel (Hebrew) ===== */
+.instructions-panel {
+    position: absolute;
+    top: 0; left: 0; width: 100%; height: 100%;
+    z-index: 15;
+    display: flex;
+    align-items: flex-end;
+    justify-content: center;
+    padding-bottom: 20px;
+    pointer-events: none;
+    opacity: 0;
+    transform: translateY(30px);
+    transition: opacity 0.4s ease, transform 0.4s ease;
+}
+.instructions-panel.visible {
+    opacity: 1;
+    transform: translateY(0);
+    pointer-events: auto;
+}
+
+.instructions-card {
+    width: calc(100% - 40px);
+    max-width: 400px;
+    background: linear-gradient(145deg, rgba(30,27,75,0.95), rgba(15,23,42,0.95));
+    border: 1px solid rgba(99,102,241,0.25);
+    border-radius: 20px;
+    padding: 24px 20px 18px;
+    box-shadow: 0 16px 48px rgba(0,0,0,0.4);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+}
+
+.instructions-title {
+    font-family: 'Fredoka One', sans-serif;
+    font-size: 24px;
+    background: linear-gradient(135deg, #818cf8, #c084fc);
+    -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+    background-clip: text;
+    margin-bottom: 16px;
+    text-align: center;
+}
+
+.instructions-body {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    margin-bottom: 16px;
+}
+
+.instruction-item {
+    display: flex;
+    gap: 12px;
+    align-items: flex-start;
+    font-size: 14px;
+    line-height: 1.5;
+    color: rgba(226,232,240,0.85);
+}
+
+.instruction-item strong {
+    color: #e2e8f0;
+    display: block;
+    margin-bottom: 2px;
+}
+
+.instruction-icon {
+    font-size: 24px;
+    flex-shrink: 0;
+    margin-top: 2px;
+}
+
+.instructions-close {
+    width: 100%;
+    margin-top: 4px;
+}
+.instructions-close .btn-label {
+    font-size: 16px;
+}
+
 /* ===== Responsive ===== */
 @media (max-width: 400px) {
     .menu-title { font-size: 38px; }

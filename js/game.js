@@ -146,13 +146,121 @@ class FloatingText {
     get alive() { return this.elapsed < this.life; }
 }
 
+// --- Web Audio Manager ---
+export class AudioManager {
+    constructor() {
+        const AudioCtx = window.AudioContext || window.webkitAudioContext;
+        if (!AudioCtx) { this.ctx = null; return; }
+
+        this.ctx = new AudioCtx();
+        this.masterGain = this.ctx.createGain();
+        this.masterGain.connect(this.ctx.destination);
+        this.sfxGain = this.ctx.createGain();
+        this.sfxGain.gain.value = 0.8;
+        this.sfxGain.connect(this.masterGain);
+        this.musicGain = this.ctx.createGain();
+        this.musicGain.gain.value = 0.5;
+        this.musicGain.connect(this.masterGain);
+
+        this.buffers = {};
+        this.musicSource = null;
+        this.currentMusicName = null;
+
+        this._setupUnlock();
+    }
+
+    _setupUnlock() {
+        const events = ['click', 'touchstart', 'touchend', 'pointerdown', 'keydown'];
+        const unlock = () => {
+            if (!this.ctx) return;
+            if (this.ctx.state === 'suspended' || this.ctx.state === 'interrupted') {
+                this.ctx.resume();
+            }
+            if (this.ctx.state === 'running') {
+                events.forEach(e => document.removeEventListener(e, unlock, true));
+            }
+        };
+        events.forEach(e => document.addEventListener(e, unlock, true));
+
+        document.addEventListener('visibilitychange', () => {
+            if (document.visibilityState === 'visible' && this.ctx &&
+                (this.ctx.state === 'suspended' || this.ctx.state === 'interrupted')) {
+                this.ctx.resume();
+            }
+        });
+    }
+
+    resume() {
+        if (this.ctx && this.ctx.state !== 'running') {
+            this.ctx.resume();
+        }
+    }
+
+    async loadBuffer(name, url) {
+        if (!this.ctx) return;
+        try {
+            const resp = await fetch(url);
+            if (!resp.ok) { console.warn(`Audio fetch failed: ${url} (${resp.status})`); return; }
+            const arrayBuf = await resp.arrayBuffer();
+            this.buffers[name] = await this.ctx.decodeAudioData(arrayBuf);
+        } catch (e) {
+            console.warn(`Audio decode failed: ${name}`, e);
+        }
+    }
+
+    playSFX(name, volume = 1) {
+        if (!this.ctx || !this.buffers[name]) return;
+        this.resume();
+        const src = this.ctx.createBufferSource();
+        src.buffer = this.buffers[name];
+        if (volume !== 1) {
+            const gain = this.ctx.createGain();
+            gain.gain.value = volume;
+            src.connect(gain);
+            gain.connect(this.sfxGain);
+        } else {
+            src.connect(this.sfxGain);
+        }
+        src.start(0);
+    }
+
+    playMusic(name, volume = 0.5) {
+        if (!this.ctx || !this.buffers[name]) return;
+        if (this.currentMusicName === name && this.musicSource) return;
+        this.stopMusic();
+        this.resume();
+        this.musicGain.gain.value = volume;
+        const src = this.ctx.createBufferSource();
+        src.buffer = this.buffers[name];
+        src.loop = true;
+        src.connect(this.musicGain);
+        src.start(0);
+        this.musicSource = src;
+        this.currentMusicName = name;
+    }
+
+    stopMusic() {
+        if (this.musicSource) {
+            try { this.musicSource.stop(); } catch (e) {}
+            this.musicSource = null;
+            this.currentMusicName = null;
+        }
+    }
+
+    setMuted(muted) {
+        if (this.masterGain) {
+            this.masterGain.gain.value = muted ? 0 : 1;
+        }
+    }
+}
+
 // --- Main Game ---
 export class Game {
-    constructor(canvas, images, audio) {
+    constructor(canvas, images, audioManager) {
         this.canvas = canvas;
         this.ctx = canvas.getContext('2d');
         this.images = images;
-        this.audio = audio;
+        this.am = audioManager; // Web Audio Manager
         this.dpr = Math.min(window.devicePixelRatio || 1, 3);
 
         canvas.width = GAME_WIDTH * this.dpr;
@@ -180,108 +288,46 @@ export class Game {
         this.p1Score = 0;
         this.p2Score = 0;
         this.currentRound = 0;
-        this.buzzedPlayer = 0; // 0=none, 1=P1, 2=P2
+        this.buzzedPlayer = 0;
         this.buzzTimer = 0;
 
         // Callbacks for UI
         this.onStateChange = null;
         this.onScoreChange = null;
         this.onTimerChange = null;
-        this.onBuzzChange = null; // Called when buzz state changes in duo mode
+        this.onBuzzChange = null;
 
         this.lastTime = 0;
-        this._sounds = {};
-        this._musicTracks = {};
-        this._currentMusic = null;
         this._soundEnabled = true;
-        this._audioUnlocked = false;
 
-        this._initAudio();
         this._bindInput();
     }
 
-    _initAudio() {
-        const sfx = ['correct', 'wrong', 'btnClick', 'roundWin', 'gameOver', 'buzz', 'tick'];
-        for (const name of sfx) {
-            if (this.audio[name]) {
-                this._sounds[name] = [];
-                for (let i = 0; i < 4; i++) {
-                    const clone = this.audio[name].cloneNode(true);
-                    clone.volume = 0.7;
-                    this._sounds[name].push(clone);
-                }
-                this._sounds[name]._idx = 0;
-            }
-        }
-        if (this.audio.menuMusic) {
-            this.audio.menuMusic.loop = true;
-            this.audio.menuMusic.volume = 0.4;
-            this._musicTracks.menu = this.audio.menuMusic;
-        }
-        if (this.audio.gameMusic) {
-            this.audio.gameMusic.loop = true;
-            this.audio.gameMusic.volume = 0.35;
-            this._musicTracks.game = this.audio.gameMusic;
-        }
-    }
-
-    // Must be called from a user gesture context to unlock audio
-    _unlockAudio() {
-        if (this._audioUnlocked) return;
-        this._audioUnlocked = true;
-        // Create and play a silent audio context to unlock Web Audio
-        try {
-            const ctx = new (window.AudioContext || window.webkitAudioContext)();
-            const buf = ctx.createBuffer(1, 1, 22050);
-            const src = ctx.createBufferSource();
-            src.buffer = buf;
-            src.connect(ctx.destination);
-            src.start(0);
-            ctx.resume();
-        } catch (e) {}
-    }
-
-    _playSound(name) {
+    _playSound(name, vol) {
         if (!this._soundEnabled) return;
-        const pool = this._sounds[name];
-        if (!pool || pool.length === 0) return;
-        const s = pool[pool._idx % pool.length];
-        s.currentTime = 0;
-        s.play().catch(() => {});
-        pool._idx++;
+        this.am.playSFX(name, vol);
     }
 
-    _playMusic(name) {
+    _playMusic(name, vol) {
         if (!this._soundEnabled) return;
-        if (this._currentMusic === name) return;
-        this._stopMusic();
-        const track = this._musicTracks[name];
-        if (track) {
-            track.currentTime = 0;
-            track.play().catch(() => {});
-            this._currentMusic = name;
-        }
+        this.am.playMusic(name, vol);
     }
 
     _stopMusic() {
-        for (const t of Object.values(this._musicTracks)) {
-            t.pause();
-            t.currentTime = 0;
-        }
-        this._currentMusic = null;
+        this.am.stopMusic();
     }
 
     toggleSound() {
-        this._unlockAudio();
+        this.am.resume();
         this._soundEnabled = !this._soundEnabled;
-        if (!this._soundEnabled) {
-            this._stopMusic();
-        } else {
-            // Resume appropriate music
-            if (this.state === State.MENU) this._playMusic('menu');
+        this.am.setMuted(!this._soundEnabled);
+        if (this._soundEnabled) {
+            if (this.state === State.MENU) this._playMusic('menuMusic', 0.5);
             else if (this.state === State.PLAYING_SOLO || this.state === State.PLAYING_DUO || this.state === State.DUO_BUZZED) {
-                this._playMusic('game');
+                this._playMusic('gameMusic', 0.5);
             }
+        } else {
+            this._stopMusic();
         }
         return this._soundEnabled;
     }
@@ -331,20 +377,20 @@ export class Game {
     // --- Game flow ---
 
     startSolo() {
-        this._unlockAudio();
+        this.am.resume();
         this._playSound('btnClick');
         this.state = State.PLAYING_SOLO;
         this.score = 0;
         this.level = 0;
         this.lives = 3;
         this._setupRound();
-        this._playMusic('game');
+        this._playMusic('gameMusic');
         this.onStateChange?.();
         this.onScoreChange?.();
     }
 
     startDuo() {
-        this._unlockAudio();
+        this.am.resume();
         this._playSound('btnClick');
         this.state = State.PLAYING_DUO;
         this.p1Score = 0;
@@ -352,7 +398,7 @@ export class Game {
         this.currentRound = 0;
         this.buzzedPlayer = 0;
         this._setupDuoRound();
-        this._playMusic('game');
+        this._playMusic('gameMusic');
         this.onStateChange?.();
         this.onScoreChange?.();
     }
@@ -454,7 +500,7 @@ export class Game {
     duoBuzz(player) {
         if (this.state !== State.PLAYING_DUO) return;
         if (this.buzzedPlayer !== 0) return;
-        this._unlockAudio();
+        this.am.resume();
         this.buzzedPlayer = player;
         this.buzzTimer = BUZZ_TIMEOUT_MS;
         this.state = State.DUO_BUZZED;
@@ -601,11 +647,11 @@ export class Game {
     }
 
     goToMenu() {
-        this._unlockAudio();
+        this.am.resume();
         this._playSound('btnClick');
         this.state = State.MENU;
         this.highScore = this._loadHighScore();
-        this._playMusic('menu');
+        this._playMusic('menuMusic');
         this.onStateChange?.();
     }
 
@@ -847,8 +893,8 @@ export class Game {
 
     // Called from UI on first user interaction to start menu music
     startMenuMusic() {
-        this._unlockAudio();
-        this._playMusic('menu');
+        this.am.resume();
+        this._playMusic('menuMusic');
     }
 
     // --- Game loop ---

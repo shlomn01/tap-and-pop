@@ -1,40 +1,35 @@
 // main.js - Entry point: asset loading, game init, UI wiring
 
 import { GAME_WIDTH, GAME_HEIGHT, ASSET_MANIFEST, TWO_PLAYER_ROUNDS } from './config.js';
-import { Game, State } from './game.js';
+import { Game, State, AudioManager } from './game.js';
 
-// --- Asset Loader ---
-async function loadAssets(onProgress) {
+// --- Load Images ---
+async function loadImages(onProgress) {
     const images = {};
-    const audio = {};
-    const shapeEntries = Object.entries(ASSET_MANIFEST.shapes);
-    const audioEntries = Object.entries(ASSET_MANIFEST.audio);
-    const total = shapeEntries.length + audioEntries.length;
+    const entries = Object.entries(ASSET_MANIFEST.shapes);
     let loaded = 0;
 
-    const progress = () => { loaded++; onProgress(loaded / total); };
-
-    const imgPromises = shapeEntries.map(([name, src]) => new Promise(resolve => {
+    const promises = entries.map(([name, src]) => new Promise(resolve => {
         const img = new Image();
-        img.onload = () => { images[name] = img; progress(); resolve(); };
-        img.onerror = () => { console.warn('Failed:', src); progress(); resolve(); };
+        img.onload = () => { images[name] = img; loaded++; onProgress(loaded, entries.length); resolve(); };
+        img.onerror = () => { console.warn('Failed:', src); loaded++; onProgress(loaded, entries.length); resolve(); };
         img.src = src;
     }));
 
-    const audioPromises = audioEntries.map(([name, src]) => new Promise(resolve => {
-        const a = new Audio();
-        a.preload = 'auto';
-        let done = false;
-        const finish = () => { if (done) return; done = true; audio[name] = a; progress(); resolve(); };
-        a.addEventListener('canplaythrough', finish, { once: true });
-        a.addEventListener('error', () => { if (done) return; done = true; progress(); resolve(); }, { once: true });
-        setTimeout(finish, 3000);
-        a.src = src;
-        a.load();
-    }));
+    await Promise.all(promises);
+    return images;
+}
 
-    await Promise.all([...imgPromises, ...audioPromises]);
-    return { images, audio };
+// --- Load Audio via Web Audio API ---
+async function loadAudio(audioManager, onProgress) {
+    const entries = Object.entries(ASSET_MANIFEST.audio);
+    let loaded = 0;
+
+    for (const [name, url] of entries) {
+        await audioManager.loadBuffer(name, url);
+        loaded++;
+        onProgress(loaded, entries.length);
+    }
 }
 
 // --- Resize ---
@@ -94,6 +89,8 @@ class UIController {
             goBest: $('go-best'),
             btnReplay: $('btn-replay'),
             btnMenu: $('btn-menu'),
+            instructions: $('instructions-panel'),
+            btnCloseInstructions: $('btn-close-instructions'),
         };
     }
 
@@ -110,11 +107,13 @@ class UIController {
         this.els.btnSolo?.addEventListener('click', () => {
             startMusic();
             this._lastMode = 'solo';
+            this._hideInstructions();
             this.game.startSolo();
         });
         this.els.btnDuo?.addEventListener('click', () => {
             startMusic();
             this._lastMode = 'duo';
+            this._hideInstructions();
             this.game.startDuo();
         });
         this.els.btnReplay?.addEventListener('click', () => {
@@ -132,9 +131,12 @@ class UIController {
         this.els.btnSound?.addEventListener('click', () => {
             startMusic();
             const on = this.game.toggleSound();
-            this.els.btnSound.textContent = on ? '🔊' : '🔇';
+            this.els.btnSound.textContent = on ? '\u{1F50A}' : '\u{1F507}';
             this.els.btnSound.classList.toggle('muted', !on);
         });
+
+        // Close instructions button
+        this.els.btnCloseInstructions?.addEventListener('click', () => this._hideInstructions());
 
         // Buzz-in buttons
         this.els.buzzP1?.addEventListener('click', (e) => {
@@ -145,7 +147,6 @@ class UIController {
             e.stopPropagation();
             this.game.duoBuzz(2);
         });
-        // Also handle touch to prevent delay
         this.els.buzzP1?.addEventListener('touchstart', (e) => {
             e.preventDefault();
             e.stopPropagation();
@@ -156,6 +157,10 @@ class UIController {
             e.stopPropagation();
             this.game.duoBuzz(2);
         }, { passive: false });
+    }
+
+    _hideInstructions() {
+        this.els.instructions?.classList.remove('visible');
     }
 
     _wire() {
@@ -176,7 +181,6 @@ class UIController {
 
     _updateScreens() {
         const state = this.game.state;
-        // Hide all
         ['loading', 'menu', 'hud', 'gameOver'].forEach(s => this.els[s]?.classList.remove('active'));
         this.els.duoHud?.classList.remove('active');
         this.els.buzzPanel?.classList.remove('active');
@@ -185,6 +189,8 @@ class UIController {
             case State.MENU:
                 this.els.menu?.classList.add('active');
                 if (this.els.highScore) this.els.highScore.textContent = `Best: ${this.game.highScore}`;
+                // Show instructions on menu
+                this.els.instructions?.classList.add('visible');
                 break;
             case State.PLAYING_SOLO:
             case State.ROUND_TRANSITION:
@@ -202,7 +208,6 @@ class UIController {
             case State.DUO_BUZZED:
                 this.els.hud?.classList.add('active');
                 this.els.duoHud?.classList.add('active');
-                // Hide buzz panel when someone has buzzed in
                 this.els.buzzPanel?.classList.remove('active');
                 break;
             case State.GAME_OVER:
@@ -218,7 +223,7 @@ class UIController {
             if (this.els.hudScore) this.els.hudScore.textContent = g.score;
             if (this.els.hudLives) {
                 let h = '';
-                for (let i = 0; i < 3; i++) h += `<span class="life ${i < g.lives ? '' : 'lost'}">❤️</span>`;
+                for (let i = 0; i < 3; i++) h += `<span class="life ${i < g.lives ? '' : 'lost'}">\u2764\uFE0F</span>`;
                 this.els.hudLives.innerHTML = h;
             }
             if (this.els.hudLevel) this.els.hudLevel.textContent = `LV ${g.level + 1}`;
@@ -247,7 +252,6 @@ class UIController {
         if (!this.els.buzzP1 || !this.els.buzzP2) return;
 
         if (g.buzzedPlayer === 0) {
-            // Both buttons active
             this.els.buzzP1.classList.remove('disabled', 'buzzed');
             this.els.buzzP2.classList.remove('disabled', 'buzzed');
         } else if (g.buzzedPlayer === 1) {
@@ -270,7 +274,7 @@ class UIController {
             if (this.els.goScore) this.els.goScore.textContent = g.score;
             if (this.els.goSubtext) this.els.goSubtext.textContent = `Level ${g.level + 1} reached`;
             if (this.els.goBest) {
-                this.els.goBest.textContent = g.score >= g.highScore ? '🏆 NEW BEST!' : `Best: ${g.highScore}`;
+                this.els.goBest.textContent = g.score >= g.highScore ? '\u{1F3C6} NEW BEST!' : `Best: ${g.highScore}`;
                 this.els.goBest.classList.toggle('new-best', g.score >= g.highScore);
             }
         } else {
@@ -300,15 +304,30 @@ document.addEventListener('DOMContentLoaded', async () => {
     const loadScreen = document.getElementById('screen-loading');
     loadScreen?.classList.add('active');
 
-    const assets = await loadAssets((p) => {
+    // Create Web Audio Manager
+    const audioManager = new AudioManager();
+
+    const imageCount = Object.keys(ASSET_MANIFEST.shapes).length;
+    const audioCount = Object.keys(ASSET_MANIFEST.audio).length;
+    const total = imageCount + audioCount;
+    let totalLoaded = 0;
+
+    const updateBar = () => {
+        const p = totalLoaded / total;
         const bar = document.getElementById('load-bar');
         const text = document.getElementById('load-text');
         if (bar) bar.style.width = `${p * 100}%`;
         if (text) text.textContent = `Loading ${Math.floor(p * 100)}%`;
-    });
+    };
 
-    // Create game
-    const game = new Game(canvas, assets.images, assets.audio);
+    // Load images and audio in parallel
+    const [images] = await Promise.all([
+        loadImages((loaded, _total) => { totalLoaded = loaded; updateBar(); }),
+        loadAudio(audioManager, (loaded, _total) => { totalLoaded = imageCount + loaded; updateBar(); }),
+    ]);
+
+    // Create game with AudioManager
+    const game = new Game(canvas, images, audioManager);
     const ui = new UIController(game);
 
     loadScreen?.classList.remove('active');
