@@ -3,9 +3,7 @@
 import {
     GAME_WIDTH, GAME_HEIGHT, SHAPES, DIFFICULTY_TABLE,
     BOARD_TOP, BOARD_BOTTOM, TARGET_AREA_Y, PARTICLE_COUNT,
-    TWO_PLAYER_SHAPES, TWO_PLAYER_SPEED, TWO_PLAYER_MIN_SIZE,
-    TWO_PLAYER_MAX_SIZE, TWO_PLAYER_ROUNDS, BUZZ_TIMEOUT_MS,
-    STORAGE_KEY
+    STORAGE_KEY, LEADERBOARD_KEY
 } from './config.js';
 import { t, shapeName, getLang } from './i18n.js';
 
@@ -13,8 +11,6 @@ export const State = {
     LOADING: 'LOADING',
     MENU: 'MENU',
     PLAYING_SOLO: 'PLAYING_SOLO',
-    PLAYING_DUO: 'PLAYING_DUO',
-    DUO_BUZZED: 'DUO_BUZZED',
     ROUND_TRANSITION: 'ROUND_TRANSITION',
     GAME_OVER: 'GAME_OVER',
 };
@@ -57,7 +53,7 @@ class BoardShape {
         const dy = this.y + Math.sin(this.wobblePhase) * this.wobbleAmp;
         const dx = px - this.x;
         const ddy = py - dy;
-        const hitRadius = this.size * 0.55; // slightly generous
+        const hitRadius = this.size * 0.55;
         return (dx * dx + ddy * ddy) < (hitRadius * hitRadius);
     }
 
@@ -146,7 +142,6 @@ class FloatingText {
         ctx.shadowColor = this.color;
         ctx.shadowBlur = 12;
         ctx.fillText(this.text, 0, 0);
-        // Outline
         ctx.strokeStyle = 'rgba(0,0,0,0.3)';
         ctx.lineWidth = 2;
         ctx.strokeText(this.text, 0, 0);
@@ -156,18 +151,15 @@ class FloatingText {
 }
 
 // --- Simple Audio Manager using HTML5 Audio ---
-// Uses plain Audio elements - the most reliable cross-browser approach.
-// Music: single Audio element with loop.
-// SFX: pool of Audio elements for overlapping sounds.
 export class AudioManager {
     constructor() {
-        this._urls = {};        // name -> url mapping
-        this._sfxPool = {};     // name -> [Audio, Audio, ...]
-        this._music = null;     // current music Audio element
-        this._currentMusic = null; // name of current music
+        this._urls = {};
+        this._sfxPool = {};
+        this._music = null;
+        this._currentMusic = null;
         this._muted = false;
         this._musicVolume = 0.5;
-        this._pendingMusic = null; // music to play after user gesture
+        this._pendingMusic = null;
         this._userInteracted = false;
         this._setupGestureUnlock();
         console.log('[Audio] AudioManager created');
@@ -177,7 +169,6 @@ export class AudioManager {
         const handler = () => {
             this._userInteracted = true;
             console.log('[Audio] User interacted');
-            // If there's pending music, play it now
             if (this._pendingMusic && !this._muted) {
                 this._doPlayMusic(this._pendingMusic.name, this._pendingMusic.volume);
                 this._pendingMusic = null;
@@ -188,10 +179,8 @@ export class AudioManager {
         });
     }
 
-    // "Load" just means storing the URL - Audio elements load on demand
     async loadBuffer(name, url) {
         this._urls[name] = url;
-        // Pre-create SFX pool (3 copies for overlapping)
         if (!url.includes('music')) {
             this._sfxPool[name] = [];
             for (let i = 0; i < 3; i++) {
@@ -211,63 +200,41 @@ export class AudioManager {
             console.warn(`[Audio] No SFX pool for: ${name}`);
             return;
         }
-        // Find a free audio element (one that's ended or paused)
         let audio = pool.find(a => a.paused || a.ended);
         if (!audio) {
-            // All busy - clone a new one
             audio = pool[0].cloneNode();
             pool.push(audio);
         }
         audio.volume = Math.min(1, volume * 0.8);
         audio.currentTime = 0;
         const p = audio.play();
-        if (p) p.catch(() => {}); // Ignore autoplay errors for SFX
+        if (p) p.catch(() => {});
     }
 
     playMusic(name, volume = 0.5) {
         if (this._muted) return;
         this._musicVolume = volume;
-
-        // If same music already playing, skip
         if (this._currentMusic === name && this._music && !this._music.paused) {
-            console.log(`[Audio] Music already playing: ${name}`);
             return;
         }
-
-        // If user hasn't interacted yet, queue it
         if (!this._userInteracted) {
-            console.log(`[Audio] Queuing music until user interaction: ${name}`);
             this._pendingMusic = { name, volume };
             return;
         }
-
         this._doPlayMusic(name, volume);
     }
 
     _doPlayMusic(name, volume) {
         const url = this._urls[name];
-        if (!url) {
-            console.warn(`[Audio] No URL for music: ${name}`);
-            return;
-        }
-
-        console.log(`[Audio] Playing music: ${name} from ${url}`);
-
-        // Stop current music
+        if (!url) return;
         this.stopMusic();
-
-        // Create new audio element
         this._music = new Audio(url);
         this._music.loop = true;
         this._music.volume = Math.min(1, volume);
         this._currentMusic = name;
-
         const p = this._music.play();
         if (p) {
-            p.then(() => console.log(`[Audio] Music started: ${name}`))
-             .catch(err => {
-                console.warn(`[Audio] Music play failed: ${err.message}`);
-                // Queue for next interaction
+            p.catch(err => {
                 this._pendingMusic = { name, volume };
             });
         }
@@ -281,12 +248,10 @@ export class AudioManager {
             this._music.src = '';
             this._music = null;
             this._currentMusic = null;
-            console.log('[Audio] Music stopped');
         }
     }
 
     resume() {
-        // If music was pending, try to play it now
         if (this._pendingMusic && !this._muted) {
             this._userInteracted = true;
             this._doPlayMusic(this._pendingMusic.name, this._pendingMusic.volume);
@@ -299,7 +264,6 @@ export class AudioManager {
         if (muted) {
             this.stopMusic();
         }
-        // Mute/unmute all SFX pools
         for (const pool of Object.values(this._sfxPool)) {
             for (const a of pool) a.muted = muted;
         }
@@ -337,7 +301,7 @@ export class Game {
         this.canvas = canvas;
         this.ctx = canvas.getContext('2d');
         this.images = images;
-        this.am = audioManager; // Web Audio Manager
+        this.am = audioManager;
         this.dpr = Math.min(window.devicePixelRatio || 1, 3);
 
         canvas.width = GAME_WIDTH * this.dpr;
@@ -354,7 +318,6 @@ export class Game {
         this.lives = 3;
         this.roundTimer = 0;
         this.roundTimerMax = 0;
-        this.highScore = this._loadHighScore();
         this.transitionTimer = 0;
         this.transitionText = '';
         this.shakeTimer = 0;
@@ -366,18 +329,14 @@ export class Game {
         this._bgStars = [];
         for (let i = 0; i < 50; i++) this._bgStars.push(new BgStar());
 
-        // Two-player state
-        this.p1Score = 0;
-        this.p2Score = 0;
-        this.currentRound = 0;
-        this.buzzedPlayer = 0;
-        this.buzzTimer = 0;
+        // Leaderboard
+        this._leaderboard = this._loadLeaderboard();
+        this.highScore = this._leaderboard.length > 0 ? this._leaderboard[0].score : 0;
 
         // Callbacks for UI
         this.onStateChange = null;
         this.onScoreChange = null;
         this.onTimerChange = null;
-        this.onBuzzChange = null;
 
         this.lastTime = 0;
         this._soundEnabled = true;
@@ -405,7 +364,7 @@ export class Game {
         this.am.setMuted(!this._soundEnabled);
         if (this._soundEnabled) {
             if (this.state === State.MENU) this._playMusic('menuMusic', 0.5);
-            else if (this.state === State.PLAYING_SOLO || this.state === State.PLAYING_DUO || this.state === State.DUO_BUZZED) {
+            else if (this.state === State.PLAYING_SOLO) {
                 this._playMusic('gameMusic', 0.5);
             }
         } else {
@@ -414,14 +373,49 @@ export class Game {
         return this._soundEnabled;
     }
 
-    _loadHighScore() {
-        try { return parseInt(localStorage.getItem(STORAGE_KEY)) || 0; }
-        catch { return 0; }
+    // --- Leaderboard ---
+
+    _loadLeaderboard() {
+        try {
+            const data = JSON.parse(localStorage.getItem(LEADERBOARD_KEY));
+            if (Array.isArray(data)) return data.slice(0, 10);
+        } catch {}
+        return [];
+    }
+
+    getLeaderboard() {
+        return this._leaderboard;
+    }
+
+    isHighScore(score) {
+        if (score <= 0) return false;
+        if (this._leaderboard.length < 10) return true;
+        return score > this._leaderboard[this._leaderboard.length - 1].score;
+    }
+
+    saveToLeaderboard(name, score, level) {
+        const entry = {
+            name: name.trim().substring(0, 20),
+            score,
+            level,
+            date: new Date().toISOString().split('T')[0]
+        };
+        this._leaderboard.push(entry);
+        this._leaderboard.sort((a, b) => b.score - a.score);
+        this._leaderboard = this._leaderboard.slice(0, 10);
+        try { localStorage.setItem(LEADERBOARD_KEY, JSON.stringify(this._leaderboard)); } catch {}
+        this.highScore = this._leaderboard[0].score;
+        // Also update legacy high score key
+        try { localStorage.setItem(STORAGE_KEY, this.highScore); } catch {}
+        return entry;
     }
 
     _saveHighScore(s) {
-        try { if (s > this.highScore) { localStorage.setItem(STORAGE_KEY, s); this.highScore = s; return true; } }
-        catch {}
+        if (s > this.highScore) {
+            this.highScore = s;
+            try { localStorage.setItem(STORAGE_KEY, s); } catch {}
+            return true;
+        }
         return false;
     }
 
@@ -450,10 +444,7 @@ export class Game {
     _handleTap(x, y) {
         if (this.state === State.PLAYING_SOLO) {
             this._handleSoloTap(x, y);
-        } else if (this.state === State.DUO_BUZZED) {
-            this._handleDuoBuzzedTap(x, y);
         }
-        // In PLAYING_DUO state, taps on canvas are ignored - players must use buzz buttons
     }
 
     // --- Game flow ---
@@ -471,36 +462,16 @@ export class Game {
         this.onScoreChange?.();
     }
 
-    startDuo() {
-        this.am.resume();
-        this._playSound('btnClick');
-        this.state = State.PLAYING_DUO;
-        this.p1Score = 0;
-        this.p2Score = 0;
-        this.currentRound = 0;
-        this.buzzedPlayer = 0;
-        this._setupDuoRound();
-        this._playMusic('gameMusic');
-        this.onStateChange?.();
-        this.onScoreChange?.();
-    }
-
     _randomSize(minSize, maxSize) {
-        // Create dramatic size variation: some tiny, some huge
-        // Use weighted random: 30% small, 40% medium, 20% large, 10% extra large
         const r = Math.random();
         const range = maxSize - minSize;
         if (r < 0.3) {
-            // Small: 50%-70% of min
             return minSize * (0.5 + Math.random() * 0.2);
         } else if (r < 0.7) {
-            // Medium: normal range
             return minSize + Math.random() * range;
         } else if (r < 0.9) {
-            // Large: 1.5x-2.5x of max
             return maxSize * (1.5 + Math.random() * 1.0);
         } else {
-            // Extra large: 2.5x-4x of max
             return maxSize * (2.5 + Math.random() * 1.5);
         }
     }
@@ -529,7 +500,6 @@ export class Game {
             const y = BOARD_TOP + rowHeight * row + Math.random() * rowHeight * 0.5 + rowHeight * 0.25;
             const x = Math.random() * GAME_WIDTH;
             const direction = (row % 2 === 0) ? 1 : -1;
-            // Bigger shapes move slower, smaller move faster
             const sizeRatio = diff.minSize / size;
             const speed = (diff.speed + Math.random() * diff.speed * 0.4) * direction * (0.5 + sizeRatio * 0.8);
             this.shapes.push(new BoardShape(type, x, y, size, speed, this.images[type]));
@@ -540,57 +510,6 @@ export class Game {
         this.onTimerChange?.();
     }
 
-    _setupDuoRound() {
-        this.currentRound++;
-        this.buzzedPlayer = 0;
-        this.buzzTimer = 0;
-        this.shapes = [];
-        this.particles = [];
-        this.floatingTexts = [];
-
-        const available = [...SHAPES];
-        const boardTypes = [];
-        for (let i = 0; i < TWO_PLAYER_SHAPES && available.length > 0; i++) {
-            const idx = Math.floor(Math.random() * available.length);
-            boardTypes.push(available.splice(idx, 1)[0]);
-        }
-
-        this.targetShape = boardTypes[Math.floor(Math.random() * boardTypes.length)];
-
-        const rows = Math.ceil(TWO_PLAYER_SHAPES / 4);
-        for (let i = 0; i < boardTypes.length; i++) {
-            const type = boardTypes[i];
-            const size = this._randomSize(TWO_PLAYER_MIN_SIZE, TWO_PLAYER_MAX_SIZE);
-            const row = Math.floor(i / 4);
-            const rowHeight = (BOARD_BOTTOM - BOARD_TOP) / rows;
-            const y = BOARD_TOP + rowHeight * row + Math.random() * rowHeight * 0.5 + rowHeight * 0.25;
-            const x = Math.random() * GAME_WIDTH;
-            const direction = (row % 2 === 0) ? 1 : -1;
-            const sizeRatio = TWO_PLAYER_MIN_SIZE / size;
-            const speed = (TWO_PLAYER_SPEED + Math.random() * 30) * direction * (0.5 + sizeRatio * 0.8);
-            this.shapes.push(new BoardShape(type, x, y, size, speed, this.images[type]));
-        }
-
-        this.roundTimer = 15000;
-        this.roundTimerMax = 15000;
-        this.onTimerChange?.();
-        this.onScoreChange?.();
-        this.onBuzzChange?.();
-    }
-
-    // Called by UI buzz buttons
-    duoBuzz(player) {
-        if (this.state !== State.PLAYING_DUO) return;
-        if (this.buzzedPlayer !== 0) return;
-        this.am.resume();
-        this.buzzedPlayer = player;
-        this.buzzTimer = BUZZ_TIMEOUT_MS;
-        this.state = State.DUO_BUZZED;
-        this._playSound('buzz');
-        this.onStateChange?.();
-        this.onBuzzChange?.();
-    }
-
     _handleSoloTap(x, y) {
         for (let i = this.shapes.length - 1; i >= 0; i--) {
             const shape = this.shapes[i];
@@ -599,20 +518,6 @@ export class Game {
                     this._correctTapSolo(shape);
                 } else {
                     this._wrongTapSolo(shape);
-                }
-                return;
-            }
-        }
-    }
-
-    _handleDuoBuzzedTap(x, y) {
-        for (let i = this.shapes.length - 1; i >= 0; i--) {
-            const shape = this.shapes[i];
-            if (shape.hitTest(x, y)) {
-                if (shape.type === this.targetShape) {
-                    this._correctTapDuo(shape);
-                } else {
-                    this._wrongTapDuo(shape);
                 }
                 return;
             }
@@ -632,14 +537,14 @@ export class Game {
         this.floatingTexts.push(new FloatingText(shape.x, shape.y, `+${points}`, '#22C55E'));
         this.onScoreChange?.();
         this._playSound('roundWin');
-        this._showTransition(t('game.level', this.level + 1), 1200, State.PLAYING_SOLO);
+        this._showTransition(t('game.level', this.level + 1), 1200);
     }
 
     _wrongTapSolo(shape) {
         this._playSound('wrong');
         this.shakeTimer = 200;
         this._burstParticles(shape.x, shape.y, ['#EF4444', '#F87171', '#FCA5A5']);
-        this.floatingTexts.push(new FloatingText(shape.x, shape.y, '✗', '#EF4444'));
+        this.floatingTexts.push(new FloatingText(shape.x, shape.y, '\u2717', '#EF4444'));
 
         this.lives--;
         this.onScoreChange?.();
@@ -649,70 +554,21 @@ export class Game {
         if (navigator.vibrate) navigator.vibrate(50);
     }
 
-    _correctTapDuo(shape) {
-        this._playSound('correct');
-        this._burstParticles(shape.x, shape.y, ['#22C55E', '#4ADE80', '#86EFAC', '#FDE047']);
-        shape.highlighted = true;
-        shape.highlightTimer = 500;
-
-        const player = this.buzzedPlayer;
-        if (player === 1) this.p1Score++;
-        else this.p2Score++;
-        this.floatingTexts.push(new FloatingText(shape.x, shape.y, `P${player} +1`, player === 1 ? '#F87171' : '#60A5FA'));
-        this._playSound('roundWin');
-        this.onScoreChange?.();
-
-        if (this.currentRound >= TWO_PLAYER_ROUNDS) {
-            this._gameOver();
-        } else {
-            this._showTransition(t('game.round', this.currentRound + 1), 1200, State.PLAYING_DUO);
-        }
-    }
-
-    _wrongTapDuo(shape) {
-        this._playSound('wrong');
-        this.shakeTimer = 200;
-        this._burstParticles(shape.x, shape.y, ['#EF4444', '#F87171']);
-
-        const player = this.buzzedPlayer;
-        const opponent = player === 1 ? 2 : 1;
-        // Opponent gets the point
-        if (opponent === 1) this.p1Score++;
-        else this.p2Score++;
-        this.floatingTexts.push(new FloatingText(shape.x, shape.y, `P${opponent} +1`, opponent === 1 ? '#F87171' : '#60A5FA'));
-        this.onScoreChange?.();
-
-        if (this.currentRound >= TWO_PLAYER_ROUNDS) {
-            this._gameOver();
-        } else {
-            this._showTransition(t('game.round', this.currentRound + 1), 1200, State.PLAYING_DUO);
-        }
-
-        if (navigator.vibrate) navigator.vibrate(50);
-    }
-
     _burstParticles(x, y, colors) {
         for (let i = 0; i < PARTICLE_COUNT; i++) {
             this.particles.push(new Particle(x, y, colors[Math.floor(Math.random() * colors.length)]));
         }
     }
 
-    _showTransition(text, duration, nextState) {
+    _showTransition(text, duration) {
         this.transitionText = text;
         this.transitionTimer = duration;
         this.state = State.ROUND_TRANSITION;
-        this.buzzedPlayer = 0;
         this.onStateChange?.();
-        this.onBuzzChange?.();
 
         setTimeout(() => {
-            if (nextState === State.PLAYING_SOLO) {
-                this.state = State.PLAYING_SOLO;
-                this._setupRound();
-            } else {
-                this.state = State.PLAYING_DUO;
-                this._setupDuoRound();
-            }
+            this.state = State.PLAYING_SOLO;
+            this._setupRound();
             this.onStateChange?.();
         }, duration);
     }
@@ -720,10 +576,7 @@ export class Game {
     _gameOver() {
         this._stopMusic();
         this._playSound('gameOver');
-        if (this.state === State.PLAYING_SOLO || (this.state !== State.PLAYING_DUO && this.state !== State.DUO_BUZZED)) {
-            this._saveHighScore(this.score);
-        }
-        this.buzzedPlayer = 0;
+        this._saveHighScore(this.score);
         this.state = State.GAME_OVER;
         this.onStateChange?.();
     }
@@ -732,7 +585,8 @@ export class Game {
         this.am.resume();
         this._playSound('btnClick');
         this.state = State.MENU;
-        this.highScore = this._loadHighScore();
+        this._leaderboard = this._loadLeaderboard();
+        this.highScore = this._leaderboard.length > 0 ? this._leaderboard[0].score : 0;
         this._playMusic('menuMusic');
         this.onStateChange?.();
     }
@@ -742,10 +596,8 @@ export class Game {
     update(dt) {
         this._globalTime += dt;
 
-        // Animate background stars
         for (const star of this._bgStars) star.update(dt);
 
-        // Shake
         if (this.shakeTimer > 0) {
             this.shakeTimer -= dt;
             const intensity = 8 * (this.shakeTimer / 200);
@@ -756,9 +608,7 @@ export class Game {
             this.shakeY = 0;
         }
 
-        const isActive = this.state === State.PLAYING_SOLO || this.state === State.PLAYING_DUO || this.state === State.DUO_BUZZED;
-
-        if (isActive) {
+        if (this.state === State.PLAYING_SOLO) {
             for (const s of this.shapes) s.update(dt);
             this.particles = this.particles.filter(p => { p.update(dt); return p.alive; });
             this.floatingTexts = this.floatingTexts.filter(t => { t.update(dt); return t.alive; });
@@ -767,56 +617,14 @@ export class Game {
             this.onTimerChange?.();
 
             if (this.roundTimer <= 0) {
-                if (this.state === State.PLAYING_SOLO) {
-                    this.lives--;
-                    this._playSound('wrong');
-                    this.shakeTimer = 200;
-                    this.onScoreChange?.();
-                    if (this.lives <= 0) {
-                        this._gameOver();
-                    } else {
-                        this._showTransition(t('game.timesUp'), 1000, State.PLAYING_SOLO);
-                    }
-                } else if (this.state === State.DUO_BUZZED) {
-                    // Buzzed player ran out of time - opponent scores
-                    const opponent = this.buzzedPlayer === 1 ? 2 : 1;
-                    if (opponent === 1) this.p1Score++;
-                    else this.p2Score++;
-                    this._playSound('wrong');
-                    this.shakeTimer = 200;
-                    this.onScoreChange?.();
-
-                    if (this.currentRound >= TWO_PLAYER_ROUNDS) {
-                        this._gameOver();
-                    } else {
-                        this._showTransition(t('game.timesUp'), 1000, State.PLAYING_DUO);
-                    }
+                this.lives--;
+                this._playSound('wrong');
+                this.shakeTimer = 200;
+                this.onScoreChange?.();
+                if (this.lives <= 0) {
+                    this._gameOver();
                 } else {
-                    // Duo mode - no one buzzed in time
-                    if (this.currentRound >= TWO_PLAYER_ROUNDS) {
-                        this._gameOver();
-                    } else {
-                        this._showTransition(t('game.timesUp'), 1000, State.PLAYING_DUO);
-                    }
-                }
-            }
-
-            // Buzz timer countdown in DUO_BUZZED state
-            if (this.state === State.DUO_BUZZED) {
-                this.buzzTimer -= dt;
-                if (this.buzzTimer <= 0) {
-                    // Buzzed player failed to find shape in time
-                    const opponent = this.buzzedPlayer === 1 ? 2 : 1;
-                    if (opponent === 1) this.p1Score++;
-                    else this.p2Score++;
-                    this._playSound('wrong');
-                    this.onScoreChange?.();
-
-                    if (this.currentRound >= TWO_PLAYER_ROUNDS) {
-                        this._gameOver();
-                    } else {
-                        this._showTransition(t('game.tooSlow'), 1000, State.PLAYING_DUO);
-                    }
+                    this._showTransition(t('game.timesUp'), 1000);
                 }
             }
         }
@@ -834,7 +642,6 @@ export class Game {
         ctx.save();
         ctx.translate(this.shakeX, this.shakeY);
 
-        // Background gradient - richer deep space feel
         const grad = ctx.createLinearGradient(0, 0, GAME_WIDTH * 0.3, GAME_HEIGHT);
         grad.addColorStop(0, '#080c1a');
         grad.addColorStop(0.3, '#12103a');
@@ -843,11 +650,9 @@ export class Game {
         ctx.fillStyle = grad;
         ctx.fillRect(-10, -10, GAME_WIDTH + 20, GAME_HEIGHT + 20);
 
-        // Ambient glow orbs (subtle, animated)
         const t = this._globalTime / 1000;
         ctx.save();
         ctx.globalCompositeOperation = 'screen';
-        // Purple orb
         const orbX1 = GAME_WIDTH * 0.2 + Math.sin(t * 0.3) * 80;
         const orbY1 = GAME_HEIGHT * 0.3 + Math.cos(t * 0.25) * 60;
         const orbGrad1 = ctx.createRadialGradient(orbX1, orbY1, 0, orbX1, orbY1, 200);
@@ -855,7 +660,6 @@ export class Game {
         orbGrad1.addColorStop(1, 'transparent');
         ctx.fillStyle = orbGrad1;
         ctx.fillRect(0, 0, GAME_WIDTH, GAME_HEIGHT);
-        // Pink orb
         const orbX2 = GAME_WIDTH * 0.8 + Math.cos(t * 0.35) * 70;
         const orbY2 = GAME_HEIGHT * 0.7 + Math.sin(t * 0.2) * 50;
         const orbGrad2 = ctx.createRadialGradient(orbX2, orbY2, 0, orbX2, orbY2, 180);
@@ -865,10 +669,8 @@ export class Game {
         ctx.fillRect(0, 0, GAME_WIDTH, GAME_HEIGHT);
         ctx.restore();
 
-        // Background stars
         for (const star of this._bgStars) star.draw(ctx);
 
-        // Subtle grid with cross-fade
         ctx.strokeStyle = 'rgba(99, 102, 241, 0.035)';
         ctx.lineWidth = 1;
         for (let x = 0; x < GAME_WIDTH; x += 60) {
@@ -878,11 +680,9 @@ export class Game {
             ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(GAME_WIDTH, y); ctx.stroke();
         }
 
-        const isPlayState = this.state === State.PLAYING_SOLO || this.state === State.PLAYING_DUO ||
-                           this.state === State.DUO_BUZZED || this.state === State.ROUND_TRANSITION;
+        const isPlayState = this.state === State.PLAYING_SOLO || this.state === State.ROUND_TRANSITION;
 
         if (isPlayState) {
-            // Board area glow border
             ctx.save();
             ctx.strokeStyle = 'rgba(99, 102, 241, 0.08)';
             ctx.lineWidth = 1;
@@ -892,7 +692,6 @@ export class Game {
             ctx.roundRect(bx, by, bw, bh, 16);
             ctx.stroke();
             ctx.setLineDash([]);
-            // Soft vignette inside board
             const vig = ctx.createRadialGradient(GAME_WIDTH/2, (BOARD_TOP+BOARD_BOTTOM)/2, 50, GAME_WIDTH/2, (BOARD_TOP+BOARD_BOTTOM)/2, GAME_WIDTH*0.6);
             vig.addColorStop(0, 'transparent');
             vig.addColorStop(1, 'rgba(8,12,26,0.15)');
@@ -900,32 +699,19 @@ export class Game {
             ctx.fillRect(0, BOARD_TOP - 20, GAME_WIDTH, BOARD_BOTTOM - BOARD_TOP + 40);
             ctx.restore();
 
-            // Draw shapes
             for (const s of this.shapes) s.draw(ctx);
-
-            // Draw particles
             for (const p of this.particles) p.draw(ctx);
-
-            // Draw floating texts
             for (const t of this.floatingTexts) t.draw(ctx);
 
-            // Target area
             this._drawTargetArea(ctx);
-
-            // Duo buzzed overlay
-            if (this.state === State.DUO_BUZZED) {
-                this._drawBuzzOverlay(ctx);
-            }
         }
 
-        // Transition text with glow ring
         if (this.state === State.ROUND_TRANSITION && this.transitionTimer > 0) {
             ctx.save();
             const progress = 1 - this.transitionTimer / 1200;
             const alpha = progress < 0.2 ? progress / 0.2 : progress > 0.8 ? (1 - progress) / 0.2 : 1;
             ctx.globalAlpha = alpha;
 
-            // Expanding ring
             const ringR = 40 + progress * 120;
             const ringGrad = ctx.createRadialGradient(GAME_WIDTH/2, GAME_HEIGHT/2, ringR - 5, GAME_WIDTH/2, GAME_HEIGHT/2, ringR + 20);
             ringGrad.addColorStop(0, 'rgba(99,102,241,0.2)');
@@ -958,11 +744,9 @@ export class Game {
 
         ctx.save();
 
-        // Outer glow
         ctx.shadowColor = 'rgba(99,102,241,0.15)';
         ctx.shadowBlur = 30;
 
-        // Glass panel background
         const panelGrad = ctx.createLinearGradient(panelX, panelY, panelX, panelY + panelH);
         panelGrad.addColorStop(0, 'rgba(20, 16, 58, 0.88)');
         panelGrad.addColorStop(0.5, 'rgba(25, 22, 65, 0.92)');
@@ -973,12 +757,10 @@ export class Game {
         ctx.fill();
         ctx.shadowBlur = 0;
 
-        // Border with gradient
         ctx.strokeStyle = 'rgba(99, 102, 241, 0.3)';
         ctx.lineWidth = 1.5;
         ctx.stroke();
 
-        // Top highlight line
         ctx.save();
         ctx.beginPath();
         ctx.roundRect(panelX + 1, panelY + 1, panelW - 2, panelH - 2, 21);
@@ -992,12 +774,10 @@ export class Game {
         ctx.fillRect(panelX, panelY, panelW, 2);
         ctx.restore();
 
-        // Layout: RTL-aware
         const isRTL = getLang() === 'he';
         const findLabel = t('game.find');
 
         if (isRTL) {
-            // RTL: shape name on right, image in middle, FIND label on left
             ctx.font = 'bold 22px "Fredoka One", "Rubik", Arial';
             ctx.fillStyle = 'rgba(129, 140, 248, 0.85)';
             ctx.textAlign = 'right';
@@ -1023,7 +803,6 @@ export class Game {
                 ctx.fillText(shapeName(this.targetShape), tx - size / 2 - 12, ty);
             }
         } else {
-            // LTR layout (original)
             ctx.font = 'bold 22px "Fredoka One", "Rubik", Arial';
             ctx.fillStyle = 'rgba(129, 140, 248, 0.85)';
             ctx.textAlign = 'left';
@@ -1053,34 +832,6 @@ export class Game {
         ctx.restore();
     }
 
-    _drawBuzzOverlay(ctx) {
-        // Show which player buzzed
-        const player = this.buzzedPlayer;
-        const color = player === 1 ? 'rgba(239,68,68,0.15)' : 'rgba(59,130,246,0.15)';
-        const borderColor = player === 1 ? 'rgba(239,68,68,0.4)' : 'rgba(59,130,246,0.4)';
-        const textColor = player === 1 ? '#F87171' : '#60A5FA';
-
-        // Border flash
-        ctx.save();
-        ctx.strokeStyle = borderColor;
-        ctx.lineWidth = 4;
-        ctx.strokeRect(4, 4, GAME_WIDTH - 8, GAME_HEIGHT - 8);
-
-        // Buzz timer indicator
-        const pct = Math.max(0, this.buzzTimer / BUZZ_TIMEOUT_MS);
-        ctx.fillStyle = borderColor;
-        ctx.fillRect(0, GAME_HEIGHT - 8, GAME_WIDTH * pct, 8);
-
-        // "P1/P2 is looking!" text
-        ctx.font = 'bold 20px "Fredoka One", "Rubik", Arial';
-        ctx.fillStyle = textColor;
-        ctx.textAlign = 'center';
-        ctx.textBaseline = 'top';
-        ctx.fillText(t('game.playerLooking', player), GAME_WIDTH / 2, BOARD_TOP - 45);
-        ctx.restore();
-    }
-
-    // Called from UI on first user interaction to start menu music
     startMenuMusic() {
         this.am.resume();
         this._playMusic('menuMusic');

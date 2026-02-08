@@ -1,6 +1,6 @@
 // main.js - Entry point: asset loading, game init, UI wiring
 
-import { GAME_WIDTH, GAME_HEIGHT, ASSET_MANIFEST, TWO_PLAYER_ROUNDS } from './config.js';
+import { GAME_WIDTH, GAME_HEIGHT, ASSET_MANIFEST } from './config.js';
 import { Game, State, AudioManager } from './game.js';
 import { initLang, toggleLang, getLang, t } from './i18n.js';
 
@@ -56,9 +56,9 @@ class UIController {
         this._cache();
         this._bind();
         this._wire();
-        this._lastMode = 'solo';
         this._instrSeen = this._loadInstrSeen();
         this._pendingGameStart = null;
+        this._lastSavedEntry = null;
     }
 
     _cache() {
@@ -72,7 +72,6 @@ class UIController {
             loadText: $('load-text'),
             highScore: $('menu-highscore'),
             btnSolo: $('btn-solo'),
-            btnDuo: $('btn-duo'),
             btnSound: $('btn-sound'),
             btnLang: $('btn-lang'),
             btnHowToPlay: $('btn-how-to-play'),
@@ -81,13 +80,6 @@ class UIController {
             hudLevel: $('hud-level'),
             hudTimer: $('hud-timer'),
             timerBar: $('timer-bar'),
-            duoHud: $('duo-hud'),
-            p1Score: $('p1-score'),
-            p2Score: $('p2-score'),
-            duoRound: $('duo-round'),
-            buzzPanel: $('buzz-panel'),
-            buzzP1: $('buzz-p1'),
-            buzzP2: $('buzz-p2'),
             goTitle: $('go-title'),
             goScore: $('go-score'),
             goSubtext: $('go-subtext'),
@@ -96,22 +88,25 @@ class UIController {
             btnMenu: $('btn-menu'),
             instructions: $('instructions-panel'),
             btnCloseInstructions: $('btn-close-instructions'),
+            // Leaderboard
+            nameEntry: $('name-entry'),
+            nameEntryLabel: $('name-entry-label'),
+            nameInput: $('name-input'),
+            btnSaveName: $('btn-save-name'),
+            btnSaveLabel: $('btn-save-label'),
+            leaderboard: $('leaderboard'),
+            lbTitle: $('lb-title'),
+            lbList: $('lb-list'),
             // i18n text elements
             menuTitle: $('menu-title'),
             menuSubtitle: $('menu-subtitle'),
             btnSoloLabel: $('btn-solo-label'),
             btnSoloDesc: $('btn-solo-desc'),
-            btnDuoLabel: $('btn-duo-label'),
-            btnDuoDesc: $('btn-duo-desc'),
             instrTitle: $('instr-title'),
             instrSoloTitle: $('instr-solo-title'),
             instrSoloBody: $('instr-solo-body'),
-            instrVsTitle: $('instr-vs-title'),
-            instrVsBody: $('instr-vs-body'),
             instrTipTitle: $('instr-tip-title'),
             instrTipBody: $('instr-tip-body'),
-            buzzP1Text: $('buzz-p1-text'),
-            buzzP2Text: $('buzz-p2-text'),
         };
     }
 
@@ -126,7 +121,6 @@ class UIController {
     }
 
     _bind() {
-        // Start menu music on any first interaction
         this._musicStarted = false;
         const startMusic = () => {
             if (!this._musicStarted) {
@@ -137,35 +131,18 @@ class UIController {
 
         this.els.btnSolo?.addEventListener('click', () => {
             startMusic();
-            this._lastMode = 'solo';
             if (!this._instrSeen) {
-                // Show instructions first, then start game
                 this._pendingGameStart = () => this.game.startSolo();
                 this.els.instructions?.classList.add('visible');
             } else {
                 this.game.startSolo();
             }
         });
-        this.els.btnDuo?.addEventListener('click', () => {
-            startMusic();
-            this._lastMode = 'duo';
-            if (!this._instrSeen) {
-                this._pendingGameStart = () => this.game.startDuo();
-                this.els.instructions?.classList.add('visible');
-            } else {
-                this.game.startDuo();
-            }
-        });
         this.els.btnReplay?.addEventListener('click', () => {
-            if (this._lastMode === 'duo') {
-                this.game.startDuo();
-            } else {
-                this.game.startSolo();
-            }
+            this.game.startSolo();
         });
         this.els.btnMenu?.addEventListener('click', () => this.game.goToMenu());
 
-        // Start music on any tap on the menu screen
         this.els.menu?.addEventListener('click', () => startMusic());
         this.els.menu?.addEventListener('touchstart', () => startMusic(), { passive: true });
         this.els.btnSound?.addEventListener('click', () => {
@@ -175,19 +152,16 @@ class UIController {
             this.els.btnSound.classList.toggle('muted', !on);
         });
 
-        // Language toggle
         this.els.btnLang?.addEventListener('click', () => {
             toggleLang();
             this._updateAllText();
         });
 
-        // How to play button (on demand, no auto-start)
         this.els.btnHowToPlay?.addEventListener('click', () => {
             this._pendingGameStart = null;
             this.els.instructions?.classList.add('visible');
         });
 
-        // Close instructions button
         this.els.btnCloseInstructions?.addEventListener('click', () => {
             this._hideInstructions();
             this._markInstrSeen();
@@ -198,25 +172,25 @@ class UIController {
             }
         });
 
-        // Buzz-in buttons
-        this.els.buzzP1?.addEventListener('click', (e) => {
-            e.stopPropagation();
-            this.game.duoBuzz(1);
+        // Save name button
+        this.els.btnSaveName?.addEventListener('click', () => {
+            this._saveLeaderboardEntry();
         });
-        this.els.buzzP2?.addEventListener('click', (e) => {
-            e.stopPropagation();
-            this.game.duoBuzz(2);
+        this.els.nameInput?.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') {
+                this._saveLeaderboardEntry();
+            }
         });
-        this.els.buzzP1?.addEventListener('touchstart', (e) => {
-            e.preventDefault();
-            e.stopPropagation();
-            this.game.duoBuzz(1);
-        }, { passive: false });
-        this.els.buzzP2?.addEventListener('touchstart', (e) => {
-            e.preventDefault();
-            e.stopPropagation();
-            this.game.duoBuzz(2);
-        }, { passive: false });
+    }
+
+    _saveLeaderboardEntry() {
+        const name = this.els.nameInput?.value?.trim();
+        if (!name) return;
+        const g = this.game;
+        const entry = g.saveToLeaderboard(name, g.score, g.level + 1);
+        this._lastSavedEntry = entry;
+        if (this.els.nameEntry) this.els.nameEntry.style.display = 'none';
+        this._renderLeaderboard(entry);
     }
 
     _hideInstructions() {
@@ -227,28 +201,21 @@ class UIController {
         this.game.onStateChange = () => this._updateScreens();
         this.game.onScoreChange = () => this._updateScores();
         this.game.onTimerChange = () => this._updateTimer();
-        this.game.onBuzzChange = () => this._updateBuzz();
     }
 
     _updateAllText() {
         const lang = getLang();
-        // Language toggle flag
-        if (this.els.btnLang) this.els.btnLang.textContent = lang === 'he' ? '🇬🇧' : '🇮🇱';
-        // Menu
+        if (this.els.btnLang) this.els.btnLang.textContent = lang === 'he' ? '\u{1F1EC}\u{1F1E7}' : '\u{1F1EE}\u{1F1F1}';
         if (this.els.menuTitle) this.els.menuTitle.innerHTML = t('menu.title').replace('\n', '<br>');
         if (this.els.menuSubtitle) this.els.menuSubtitle.textContent = t('menu.subtitle');
         if (this.els.btnSoloLabel) this.els.btnSoloLabel.textContent = t('menu.solo');
         if (this.els.btnSoloDesc) this.els.btnSoloDesc.textContent = t('menu.soloDesc');
-        if (this.els.btnDuoLabel) this.els.btnDuoLabel.textContent = t('menu.vs');
-        if (this.els.btnDuoDesc) this.els.btnDuoDesc.textContent = t('menu.vsDesc');
         if (this.els.highScore) this.els.highScore.textContent = t('menu.best', this.game.highScore);
         if (this.els.btnHowToPlay) this.els.btnHowToPlay.textContent = t('menu.howToPlay');
         // Instructions
         if (this.els.instrTitle) this.els.instrTitle.textContent = t('instr.title');
         if (this.els.instrSoloTitle) this.els.instrSoloTitle.textContent = t('instr.soloTitle');
         if (this.els.instrSoloBody) this.els.instrSoloBody.textContent = t('instr.soloBody');
-        if (this.els.instrVsTitle) this.els.instrVsTitle.textContent = t('instr.vsTitle');
-        if (this.els.instrVsBody) this.els.instrVsBody.textContent = t('instr.vsBody');
         if (this.els.instrTipTitle) this.els.instrTipTitle.textContent = t('instr.tipTitle');
         if (this.els.instrTipBody) this.els.instrTipBody.textContent = t('instr.tipBody');
         // Close instructions button
@@ -259,11 +226,12 @@ class UIController {
         if (replayLabel) replayLabel.textContent = t('gameover.playAgain');
         const menuLabel = this.els.btnMenu?.querySelector('.btn-label');
         if (menuLabel) menuLabel.textContent = t('gameover.menu');
-        // Buzz text
-        if (this.els.buzzP1Text) this.els.buzzP1Text.textContent = t('buzz.p1');
-        if (this.els.buzzP2Text) this.els.buzzP2Text.textContent = t('buzz.p2');
         // HUD level
         if (this.els.hudLevel) this.els.hudLevel.textContent = t('hud.level', this.game.level + 1);
+        // Leaderboard texts
+        if (this.els.lbTitle) this.els.lbTitle.textContent = t('leaderboard.title');
+        if (this.els.nameEntryLabel) this.els.nameEntryLabel.textContent = t('leaderboard.enterName');
+        if (this.els.btnSaveLabel) this.els.btnSaveLabel.textContent = t('leaderboard.save');
     }
 
     showLoading(progress) {
@@ -278,32 +246,15 @@ class UIController {
     _updateScreens() {
         const state = this.game.state;
         ['loading', 'menu', 'hud', 'gameOver'].forEach(s => this.els[s]?.classList.remove('active'));
-        this.els.duoHud?.classList.remove('active');
-        this.els.buzzPanel?.classList.remove('active');
 
         switch (state) {
             case State.MENU:
                 this.els.menu?.classList.add('active');
                 if (this.els.highScore) this.els.highScore.textContent = t('menu.best', this.game.highScore);
-                // Do NOT auto-show instructions here
                 break;
             case State.PLAYING_SOLO:
             case State.ROUND_TRANSITION:
                 this.els.hud?.classList.add('active');
-                if (this._lastMode === 'duo') {
-                    this.els.duoHud?.classList.add('active');
-                }
-                break;
-            case State.PLAYING_DUO:
-                this.els.hud?.classList.add('active');
-                this.els.duoHud?.classList.add('active');
-                this.els.buzzPanel?.classList.add('active');
-                this._updateBuzz();
-                break;
-            case State.DUO_BUZZED:
-                this.els.hud?.classList.add('active');
-                this.els.duoHud?.classList.add('active');
-                this.els.buzzPanel?.classList.remove('active');
                 break;
             case State.GAME_OVER:
                 this.els.gameOver?.classList.add('active');
@@ -314,20 +265,13 @@ class UIController {
 
     _updateScores() {
         const g = this.game;
-        if (g.state === State.PLAYING_SOLO || (g.state === State.ROUND_TRANSITION && this._lastMode === 'solo')) {
-            if (this.els.hudScore) this.els.hudScore.textContent = g.score;
-            if (this.els.hudLives) {
-                let h = '';
-                for (let i = 0; i < 3; i++) h += `<span class="life ${i < g.lives ? '' : 'lost'}">\u2764\uFE0F</span>`;
-                this.els.hudLives.innerHTML = h;
-            }
-            if (this.els.hudLevel) this.els.hudLevel.textContent = t('hud.level', g.level + 1);
+        if (this.els.hudScore) this.els.hudScore.textContent = g.score;
+        if (this.els.hudLives) {
+            let h = '';
+            for (let i = 0; i < 3; i++) h += `<span class="life ${i < g.lives ? '' : 'lost'}">\u2764\uFE0F</span>`;
+            this.els.hudLives.innerHTML = h;
         }
-        if (g.state === State.PLAYING_DUO || g.state === State.DUO_BUZZED || (g.state === State.ROUND_TRANSITION && this._lastMode === 'duo')) {
-            if (this.els.p1Score) this.els.p1Score.textContent = g.p1Score;
-            if (this.els.p2Score) this.els.p2Score.textContent = g.p2Score;
-            if (this.els.duoRound) this.els.duoRound.textContent = t('hud.round', g.currentRound, TWO_PLAYER_ROUNDS);
-        }
+        if (this.els.hudLevel) this.els.hudLevel.textContent = t('hud.level', g.level + 1);
     }
 
     _updateTimer() {
@@ -342,46 +286,66 @@ class UIController {
         }
     }
 
-    _updateBuzz() {
-        const g = this.game;
-        if (!this.els.buzzP1 || !this.els.buzzP2) return;
-
-        if (g.buzzedPlayer === 0) {
-            this.els.buzzP1.classList.remove('disabled', 'buzzed');
-            this.els.buzzP2.classList.remove('disabled', 'buzzed');
-        } else if (g.buzzedPlayer === 1) {
-            this.els.buzzP1.classList.add('buzzed');
-            this.els.buzzP1.classList.remove('disabled');
-            this.els.buzzP2.classList.add('disabled');
-            this.els.buzzP2.classList.remove('buzzed');
-        } else {
-            this.els.buzzP2.classList.add('buzzed');
-            this.els.buzzP2.classList.remove('disabled');
-            this.els.buzzP1.classList.add('disabled');
-            this.els.buzzP1.classList.remove('buzzed');
-        }
-    }
-
     _showGameOver() {
         const g = this.game;
-        if (this._lastMode === 'solo') {
-            if (this.els.goTitle) this.els.goTitle.textContent = t('gameover.title');
-            if (this.els.goScore) this.els.goScore.textContent = g.score;
-            if (this.els.goSubtext) this.els.goSubtext.textContent = t('gameover.levelReached', g.level + 1);
-            if (this.els.goBest) {
-                this.els.goBest.textContent = g.score >= g.highScore ? t('gameover.newBest') : t('gameover.best', g.highScore);
-                this.els.goBest.classList.toggle('new-best', g.score >= g.highScore);
+        this._lastSavedEntry = null;
+
+        if (this.els.goTitle) this.els.goTitle.textContent = t('gameover.title');
+        if (this.els.goScore) this.els.goScore.textContent = g.score;
+        if (this.els.goSubtext) this.els.goSubtext.textContent = t('gameover.levelReached', g.level + 1);
+        if (this.els.goBest) {
+            this.els.goBest.textContent = g.score >= g.highScore ? t('gameover.newBest') : t('gameover.best', g.highScore);
+            this.els.goBest.classList.toggle('new-best', g.score >= g.highScore);
+        }
+
+        // Leaderboard title
+        if (this.els.lbTitle) this.els.lbTitle.textContent = t('leaderboard.title');
+        if (this.els.nameEntryLabel) this.els.nameEntryLabel.textContent = t('leaderboard.enterName');
+        if (this.els.btnSaveLabel) this.els.btnSaveLabel.textContent = t('leaderboard.save');
+
+        // Check if score qualifies for leaderboard
+        if (g.isHighScore(g.score)) {
+            if (this.els.nameEntry) this.els.nameEntry.style.display = 'block';
+            if (this.els.nameInput) {
+                this.els.nameInput.value = '';
+                setTimeout(() => this.els.nameInput.focus(), 300);
             }
         } else {
-            let winner;
-            if (g.p1Score > g.p2Score) winner = t('gameover.p1Wins');
-            else if (g.p2Score > g.p1Score) winner = t('gameover.p2Wins');
-            else winner = t('gameover.tie');
-            if (this.els.goTitle) this.els.goTitle.textContent = winner;
-            if (this.els.goScore) this.els.goScore.textContent = `${g.p1Score} - ${g.p2Score}`;
-            if (this.els.goSubtext) this.els.goSubtext.textContent = t('gameover.roundsPlayed', TWO_PLAYER_ROUNDS);
-            if (this.els.goBest) { this.els.goBest.textContent = ''; this.els.goBest.classList.remove('new-best'); }
+            if (this.els.nameEntry) this.els.nameEntry.style.display = 'none';
         }
+
+        this._renderLeaderboard(null);
+    }
+
+    _renderLeaderboard(highlightEntry) {
+        const lb = this.game.getLeaderboard();
+        const list = this.els.lbList;
+        if (!list) return;
+
+        if (lb.length === 0) {
+            list.innerHTML = `<div class="lb-empty">${t('leaderboard.empty')}</div>`;
+            return;
+        }
+
+        list.innerHTML = lb.map((entry, i) => {
+            const isHighlighted = highlightEntry &&
+                entry.name === highlightEntry.name &&
+                entry.score === highlightEntry.score &&
+                entry.date === highlightEntry.date;
+            const rankLabel = i === 0 ? '\u{1F947}' : i === 1 ? '\u{1F948}' : i === 2 ? '\u{1F949}' : `${i + 1}`;
+            return `<div class="lb-row${isHighlighted ? ' lb-highlight' : ''}">
+                <span class="lb-rank">${rankLabel}</span>
+                <span class="lb-name">${this._escapeHtml(entry.name)}</span>
+                <span class="lb-score">${entry.score}</span>
+                <span class="lb-level">LV ${entry.level}</span>
+            </div>`;
+        }).join('');
+    }
+
+    _escapeHtml(str) {
+        const div = document.createElement('div');
+        div.textContent = str;
+        return div.innerHTML;
     }
 
     init() {
@@ -392,7 +356,6 @@ class UIController {
 
 // --- Boot ---
 document.addEventListener('DOMContentLoaded', async () => {
-    // Initialize language before anything else
     initLang();
 
     const canvas = document.getElementById('game-canvas');
@@ -402,11 +365,9 @@ document.addEventListener('DOMContentLoaded', async () => {
     window.addEventListener('resize', () => resize(canvas, container));
     window.addEventListener('orientationchange', () => setTimeout(() => resize(canvas, container), 100));
 
-    // Show loading
     const loadScreen = document.getElementById('screen-loading');
     loadScreen?.classList.add('active');
 
-    // Create Web Audio Manager
     const audioManager = new AudioManager();
 
     const imageCount = Object.keys(ASSET_MANIFEST.shapes).length;
@@ -422,13 +383,11 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (text) text.textContent = t('loading.text', Math.floor(p * 100));
     };
 
-    // Load images and audio in parallel
     const [images] = await Promise.all([
         loadImages((loaded, _total) => { totalLoaded = loaded; updateBar(); }),
         loadAudio(audioManager, (loaded, _total) => { totalLoaded = imageCount + loaded; updateBar(); }),
     ]);
 
-    // Create game with AudioManager
     const game = new Game(canvas, images, audioManager);
     const ui = new UIController(game);
 

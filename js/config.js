@@ -23,19 +23,12 @@ export const DIFFICULTY_TABLE = [
     { shapeCount: 25, speed: 120, minSize: 45,  maxSize: 75,  timeLimit: 5 },
 ];
 
-// Two player settings
-export const TWO_PLAYER_SHAPES = 12;
-export const TWO_PLAYER_SPEED = 55;
-export const TWO_PLAYER_MIN_SIZE = 70;
-export const TWO_PLAYER_MAX_SIZE = 100;
-export const TWO_PLAYER_ROUNDS = 10;
-export const BUZZ_TIMEOUT_MS = 4000;
-
 export const BOARD_TOP = 120;
 export const BOARD_BOTTOM = 950;
 export const TARGET_AREA_Y = 1080;
 
 export const STORAGE_KEY = 'spotshape_highscore';
+export const LEADERBOARD_KEY = 'spotshape_leaderboard';
 
 export const ASSET_MANIFEST = {
     shapes: {},

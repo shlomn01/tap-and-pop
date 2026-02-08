@@ -35,12 +35,8 @@
 
                 <div class="menu-buttons">
                     <button id="btn-solo" class="btn btn-primary">
-                        <span class="btn-icon">👤</span>
-                        <span class="btn-text"><span id="btn-solo-label" class="btn-label">SOLO MODE</span><span id="btn-solo-desc" class="btn-desc">Progressive difficulty</span></span>
-                    </button>
-                    <button id="btn-duo" class="btn btn-secondary">
-                        <span class="btn-icon">👥</span>
-                        <span class="btn-text"><span id="btn-duo-label" class="btn-label">VS MODE</span><span id="btn-duo-desc" class="btn-desc">Race to spot first!</span></span>
+                        <span class="btn-icon">🎮</span>
+                        <span class="btn-text"><span id="btn-solo-label" class="btn-label">PLAY</span><span id="btn-solo-desc" class="btn-desc">Progressive difficulty</span></span>
                     </button>
                 </div>
 
@@ -79,62 +75,27 @@
             </div>
         </div>
 
-        <!-- Duo HUD overlay -->
-        <div id="duo-hud" class="screen duo-hud-screen">
-            <div class="duo-bar">
-                <div class="duo-player p1">
-                    <span class="duo-label">P1</span>
-                    <span id="p1-score" class="duo-score">0</span>
-                </div>
-                <div id="duo-round" class="duo-round">Round 1/10</div>
-                <div class="duo-player p2">
-                    <span class="duo-label">P2</span>
-                    <span id="p2-score" class="duo-score">0</span>
-                </div>
-            </div>
-        </div>
-
-        <!-- Buzz-in Buttons (VS mode) -->
-        <div id="buzz-panel" class="screen buzz-panel">
-            <button id="buzz-p1" class="buzz-btn buzz-p1">
-                <span class="buzz-emoji">🔴</span>
-                <span id="buzz-p1-text" class="buzz-text">P1 BUZZ</span>
-            </button>
-            <div class="buzz-vs">VS</div>
-            <button id="buzz-p2" class="buzz-btn buzz-p2">
-                <span class="buzz-emoji">🔵</span>
-                <span id="buzz-p2-text" class="buzz-text">P2 BUZZ</span>
-            </button>
-        </div>
-
         <!-- Instructions Panel -->
         <div id="instructions-panel" class="instructions-panel">
             <div class="instructions-card">
-                <h2 id="instr-title" class="instructions-title">?איך משחקים</h2>
+                <h2 id="instr-title" class="instructions-title">איך משחקים?</h2>
                 <div class="instructions-body">
                     <div class="instruction-item">
-                        <span class="instruction-icon">👤</span>
+                        <span class="instruction-icon">🎮</span>
                         <div>
-                            <strong id="instr-solo-title">:משחק יחיד</strong>
+                            <strong id="instr-solo-title">משחק יחיד:</strong>
                             <span id="instr-solo-body">צורה מופיעה למטה - מצאו אותה בין הצורות הצפות למעלה! כל סיבוב הזמן מתקצר והצורות מתרבות.</span>
-                        </div>
-                    </div>
-                    <div class="instruction-item">
-                        <span class="instruction-icon">👥</span>
-                        <div>
-                            <strong id="instr-vs-title">:משחק לשניים</strong>
-                            <span id="instr-vs-body">שני שחקנים מתחרים! לחצו על כפתור ה-BUZZ שלכם כשזיהיתם את הצורה, ואז הקישו עליה. שחקן שטועה - הנקודה ליריב!</span>
                         </div>
                     </div>
                     <div class="instruction-item">
                         <span class="instruction-icon">⏱️</span>
                         <div>
-                            <strong id="instr-tip-title">:טיפ</strong>
+                            <strong id="instr-tip-title">טיפ:</strong>
                             <span id="instr-tip-body">צורות גדולות קלות לזיהוי אבל הקטנות שוות יותר נקודות. תהיו מהירים!</span>
                         </div>
                     </div>
                 </div>
-                <button id="btn-close-instructions" class="btn btn-ghost btn-sm instructions-close"><span class="btn-label">!הבנתי</span></button>
+                <button id="btn-close-instructions" class="btn btn-ghost btn-sm instructions-close"><span class="btn-label">הבנתי!</span></button>
             </div>
         </div>
 
@@ -146,6 +107,22 @@
                     <div id="go-score" class="go-score">0</div>
                     <div id="go-subtext" class="go-subtext">Level 1 reached</div>
                     <div id="go-best" class="go-best"></div>
+
+                    <!-- Name Entry (hidden by default) -->
+                    <div id="name-entry" class="name-entry" style="display:none;">
+                        <div id="name-entry-label" class="name-entry-label">New high score! Enter name:</div>
+                        <div class="name-entry-row">
+                            <input type="text" id="name-input" class="name-input" maxlength="20" autocomplete="off" dir="ltr">
+                            <button id="btn-save-name" class="btn btn-primary btn-xs"><span class="btn-label" id="btn-save-label">SAVE</span></button>
+                        </div>
+                    </div>
+
+                    <!-- Leaderboard -->
+                    <div id="leaderboard" class="leaderboard">
+                        <div id="lb-title" class="lb-title">LEADERBOARD</div>
+                        <div id="lb-list" class="lb-list"></div>
+                    </div>
+
                     <div class="go-buttons">
                         <button id="btn-replay" class="btn btn-primary btn-sm"><span class="btn-label">PLAY AGAIN</span></button>
                         <button id="btn-menu" class="btn btn-ghost btn-sm"><span class="btn-label">MENU</span></button>
